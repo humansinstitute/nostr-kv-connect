@@ -1,0 +1,129 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+lib-cov
+coverage/
+*.lcov
+.nyc_output
+
+# Build outputs
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Environment files (CRITICAL - contains secrets like nsec keys)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.backup
+.env.*
+!.env.example
+
+# Nostr keys and secrets (CRITICAL SECURITY)
+*.nsec
+*.npub
+*_nsec*
+*_npub*
+keys/
+keyring/
+secrets/
+private-keys/
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+
+# Redis dumps and AOF files
+dump.rdb
+*.aof
+redis.conf
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pino.log*
+
+# Runtime directories
+tmp/
+temp/
+.tmp/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.vim/
+.emacs.d/
+.sublime-project
+.sublime-workspace
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+.docker/
+
+# Test files and coverage
+test-results/
+junit.xml
+.coverage
+htmlcov/
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Certificate files
+*.crt
+*.ca-bundle
+*.p7b
+*.p7s
+*.srl
+
+# Archive files (might contain sensitive data)
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Temporary files that might contain sensitive data
+.cache/
+.parcel-cache/
+.vite/

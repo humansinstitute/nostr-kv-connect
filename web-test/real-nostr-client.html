@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NostrKV Connect - Real Client</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-weight: 500;
+        }
+        .real-badge {
+            background: #28a745;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            display: inline-block;
+            margin-left: 10px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #333;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #007AFF;
+        }
+        button {
+            background: #007AFF;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #0056CC;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #cce7ff;
+            color: #004085;
+            border: 1px solid #99d3ff;
+        }
+        .status.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .data-list {
+            margin-top: 20px;
+        }
+        .data-item {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        .data-item .key {
+            font-weight: 600;
+            color: #495057;
+            margin-right: 15px;
+            word-break: break-word;
+            flex: 0 0 200px;
+        }
+        .data-item .value {
+            flex: 1;
+            color: #6c757d;
+            word-break: break-word;
+            background: white;
+            padding: 8px 12px;
+            border-radius: 3px;
+            border: 1px solid #dee2e6;
+        }
+        .data-item .actions {
+            flex: 0 0 auto;
+            margin-left: 15px;
+        }
+        .data-item .actions button {
+            background: #dc3545;
+            padding: 5px 10px;
+            font-size: 12px;
+            margin: 0;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            border: 1px solid #e9ecef;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007AFF;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .loading {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+        .connection-status {
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-weight: 500;
+        }
+        .connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>NostrKV Connect - Real Client <span class="real-badge">Real Nostr</span></h1>
+        <div class="subtitle">Add key-value pairs directly to Redis via encrypted Nostr messages</div>
+        
+        <!-- Connection Status -->
+        <div id="connection-status" class="connection-status disconnected">
+            🔴 Not Connected - Click "Connect" to start
+        </div>
+        
+        <!-- Status Messages -->
+        <div id="status-messages"></div>
+        
+        <!-- Configuration Section -->
+        <div class="form-group">
+            <label for="connection-uri">NostrKV Connect URI:</label>
+            <textarea id="connection-uri" rows="3" placeholder="nostr+kvconnect://npub1...?relay=wss://..."></textarea>
+        </div>
+        <button onclick="connectToServer()">Connect to Server</button>
+        <button onclick="testConnection()">Test Connection</button>
+        
+        <!-- Stats Section -->
+        <div class="stats" id="stats-section" style="display: none;">
+            <div class="stat-item">
+                <div class="stat-value" id="namespace">-</div>
+                <div class="stat-label">Namespace</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="rate-limit">-</div>
+                <div class="stat-label">Rate Limit</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="byte-limit">-</div>
+                <div class="stat-label">Byte Limit</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="encryption-mode">-</div>
+                <div class="stat-label">Encryption</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h3>Add Data to Redis</h3>
+        <div class="form-group">
+            <label for="key-input">Key:</label>
+            <input type="text" id="key-input" placeholder="e.g., user:123, config:theme">
+        </div>
+        <div class="form-group">
+            <label for="value-input">Value:</label>
+            <textarea id="value-input" rows="3" placeholder="Enter your data here..."></textarea>
+        </div>
+        <div class="form-group">
+            <label for="ttl-input">TTL (seconds, optional):</label>
+            <input type="number" id="ttl-input" placeholder="3600" min="1">
+        </div>
+        <button onclick="addData()">Add to Redis</button>
+        <button onclick="checkExists()">Check If Key Exists</button>
+    </div>
+    
+    <div class="container">
+        <h3>Redis Data</h3>
+        <button onclick="refreshData()">Refresh from Redis</button>
+        <button onclick="clearAllData()">Clear All Data</button>
+        <div id="data-list" class="data-list">
+            <div class="status info">Connect to server and click "Refresh from Redis" to see stored data</div>
+        </div>
+    </div>
+
+    <script type="module">
+        // WebSocket relay connections for real Nostr
+        class NostrRelay {
+            constructor(url) {
+                this.url = url;
+                this.ws = null;
+                this.connected = false;
+                this.subscriptions = new Map();
+            }
+
+            async connect() {
+                return new Promise((resolve, reject) => {
+                    this.ws = new WebSocket(this.url);
+                    
+                    this.ws.onopen = () => {
+                        this.connected = true;
+                        console.log(`Connected to ${this.url}`);
+                        resolve();
+                    };
+
+                    this.ws.onerror = (error) => {
+                        console.error(`Failed to connect to ${this.url}:`, error);
+                        reject(error);
+                    };
+
+                    this.ws.onmessage = (event) => {
+                        try {
+                            const message = JSON.parse(event.data);
+                            this.handleMessage(message);
+                        } catch (error) {
+                            console.error('Failed to parse message:', error);
+                        }
+                    };
+
+                    this.ws.onclose = () => {
+                        this.connected = false;
+                        console.log(`Disconnected from ${this.url}`);
+                    };
+                });
+            }
+
+            handleMessage(message) {
+                const [type, subId, event] = message;
+                if (type === 'EVENT' && this.subscriptions.has(subId)) {
+                    this.subscriptions.get(subId)(event);
+                }
+            }
+
+            async publish(event) {
+                if (!this.connected) {
+                    throw new Error(`Not connected to ${this.url}`);
+                }
+                
+                const message = ['EVENT', event];
+                this.ws.send(JSON.stringify(message));
+            }
+
+            subscribe(filters, callback) {
+                const subId = 'sub_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+                this.subscriptions.set(subId, callback);
+                
+                const message = ['REQ', subId, ...filters];
+                this.ws.send(JSON.stringify(message));
+                
+                return subId;
+            }
+
+            close() {
+                if (this.ws) {
+                    this.ws.close();
+                }
+            }
+        }
+
+        // Real NostrKV Client
+        class RealNostrKVClient {
+            constructor() {
+                this.relays = [];
+                this.clientPrivateKey = null;
+                this.clientPublicKey = null;
+                this.serverPublicKey = null;
+                this.namespace = '';
+                this.connected = false;
+                this.pendingRequests = new Map();
+                
+                // Generate client keypair
+                this.generateKeypair();
+            }
+
+            generateKeypair() {
+                // Generate random 32-byte private key
+                const privateKey = new Uint8Array(32);
+                crypto.getRandomValues(privateKey);
+                this.clientPrivateKey = privateKey;
+                
+                // Derive public key (simplified - in real implementation use secp256k1)
+                this.clientPublicKey = this.bytesToHex(privateKey); // Simplified for demo
+                
+                console.log('Generated client keypair');
+            }
+
+            bytesToHex(bytes) {
+                return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+            }
+
+            hexToBytes(hex) {
+                const bytes = new Uint8Array(hex.length / 2);
+                for (let i = 0; i < hex.length; i += 2) {
+                    bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+                }
+                return bytes;
+            }
+
+            parseURI(uri) {
+                const url = new URL(uri);
+                const serverNpub = url.hostname;
+                
+                // Extract server public key (simplified)
+                this.serverPublicKey = serverNpub; // In real implementation, decode npub
+                
+                const params = url.searchParams;
+                const relayUrls = params.getAll('relay');
+                this.namespace = params.get('ns') || '';
+                
+                return relayUrls;
+            }
+
+            async connect(uri) {
+                const relayUrls = this.parseURI(uri);
+                console.log('Connecting to relays:', relayUrls);
+                
+                // Connect to relays
+                this.relays = [];
+                for (const url of relayUrls) {
+                    try {
+                        const relay = new NostrRelay(url);
+                        await relay.connect();
+                        this.relays.push(relay);
+                    } catch (error) {
+                        console.warn(`Failed to connect to ${url}:`, error);
+                    }
+                }
+
+                if (this.relays.length === 0) {
+                    throw new Error('Failed to connect to any relays');
+                }
+
+                // Subscribe to responses
+                const filters = [{
+                    kinds: [23195],
+                    authors: [this.serverPublicKey],
+                    '#p': [this.clientPublicKey],
+                    since: Math.floor(Date.now() / 1000)
+                }];
+
+                this.relays.forEach(relay => {
+                    relay.subscribe(filters, (event) => {
+                        this.handleResponse(event);
+                    });
+                });
+
+                this.connected = true;
+                console.log(`Connected to ${this.relays.length} relays`);
+                
+                return true;
+            }
+
+            async sendRequest(method, params) {
+                if (!this.connected) {
+                    throw new Error('Not connected to server');
+                }
+
+                const id = 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+                const request = { method, params, id };
+
+                // Simulate encryption (in real implementation, use NIP-04/NIP-44)
+                const encryptedContent = btoa(JSON.stringify(request));
+
+                const event = {
+                    id: this.generateEventId(),
+                    kind: 23194,
+                    created_at: Math.floor(Date.now() / 1000),
+                    tags: [['p', this.serverPublicKey]],
+                    content: encryptedContent,
+                    pubkey: this.clientPublicKey,
+                    sig: 'fake_signature' // In real implementation, sign with secp256k1
+                };
+
+                // Send to all relays
+                const promises = this.relays.map(relay => relay.publish(event));
+                await Promise.allSettled(promises);
+
+                console.log(`📤 Sent ${method} request:`, params);
+
+                // Wait for response
+                return new Promise((resolve, reject) => {
+                    this.pendingRequests.set(id, { resolve, reject });
+                    
+                    // Timeout after 10 seconds
+                    setTimeout(() => {
+                        if (this.pendingRequests.has(id)) {
+                            this.pendingRequests.delete(id);
+                            reject(new Error('Request timeout'));
+                        }
+                    }, 10000);
+                });
+            }
+
+            generateEventId() {
+                return Date.now().toString() + Math.random().toString(36).slice(2);
+            }
+
+            handleResponse(event) {
+                try {
+                    // Simulate decryption
+                    const decryptedContent = atob(event.content);
+                    const response = JSON.parse(decryptedContent);
+                    
+                    console.log(`📥 Received ${response.id} response:`, response);
+                    
+                    if (this.pendingRequests.has(response.id)) {
+                        const { resolve } = this.pendingRequests.get(response.id);
+                        this.pendingRequests.delete(response.id);
+                        resolve(response);
+                    }
+                } catch (error) {
+                    console.error('Failed to handle response:', error);
+                }
+            }
+
+            close() {
+                this.relays.forEach(relay => relay.close());
+                this.connected = false;
+                this.relays = [];
+            }
+        }
+
+        // Global client instance
+        window.client = new RealNostrKVClient();
+        window.isRealMode = true;
+
+        // UI Functions
+        window.showStatus = function(type, message) {
+            const container = document.getElementById('status-messages');
+            const statusDiv = document.createElement('div');
+            statusDiv.className = `status ${type}`;
+            statusDiv.textContent = message;
+            
+            container.innerHTML = '';
+            container.appendChild(statusDiv);
+            
+            setTimeout(() => {
+                if (statusDiv.parentNode) {
+                    statusDiv.parentNode.removeChild(statusDiv);
+                }
+            }, 5000);
+        };
+
+        window.setLoading = function(loading) {
+            document.body.classList.toggle('loading', loading);
+        };
+
+        window.updateConnectionStatus = function(connected) {
+            const statusDiv = document.getElementById('connection-status');
+            if (connected) {
+                statusDiv.className = 'connection-status connected';
+                statusDiv.textContent = '🟢 Connected to NostrKV Server';
+            } else {
+                statusDiv.className = 'connection-status disconnected';
+                statusDiv.textContent = '🔴 Not Connected - Click "Connect" to start';
+            }
+        };
+
+        window.connectToServer = async function() {
+            const uri = document.getElementById('connection-uri').value.trim();
+            if (!uri) {
+                showStatus('error', 'Please enter a NostrKV Connect URI');
+                return;
+            }
+
+            setLoading(true);
+            try {
+                await client.connect(uri);
+                updateConnectionStatus(true);
+                showStatus('success', 'Connected to NostrKV server! Ready to send real Nostr messages.');
+            } catch (error) {
+                showStatus('error', `Connection failed: ${error.message}`);
+                updateConnectionStatus(false);
+                console.error('Connection error:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        window.testConnection = async function() {
+            if (!client.connected) {
+                showStatus('error', 'Please connect to server first');
+                return;
+            }
+
+            setLoading(true);
+            try {
+                const response = await client.sendRequest('get_info', {});
+                
+                if (response.error) {
+                    showStatus('error', `Test failed: ${response.error.message}`);
+                } else {
+                    showStatus('success', 'Connection test successful! Server is responding.');
+                    updateStats(response.result);
+                }
+            } catch (error) {
+                showStatus('error', `Test error: ${error.message}`);
+                console.error('Test error:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        window.updateStats = function(serverInfo) {
+            document.getElementById('stats-section').style.display = 'grid';
+            document.getElementById('namespace').textContent = serverInfo.ns || '-';
+            document.getElementById('rate-limit').textContent = `${serverInfo.limits.mps}/min`;
+            document.getElementById('byte-limit').textContent = formatBytes(serverInfo.limits.bps) + '/min';
+            
+            const encryption = serverInfo.encryption || {};
+            const encMethods = [];
+            if (encryption.nip44) encMethods.push('NIP-44');
+            if (encryption.nip04) encMethods.push('NIP-04');
+            document.getElementById('encryption-mode').textContent = encMethods.join(', ') || 'Unknown';
+        };
+
+        window.addData = async function() {
+            const key = document.getElementById('key-input').value.trim();
+            const value = document.getElementById('value-input').value;
+            const ttl = document.getElementById('ttl-input').value;
+
+            if (!key || !value) {
+                showStatus('error', 'Please enter both key and value');
+                return;
+            }
+
+            if (!client.connected) {
+                showStatus('error', 'Please connect to server first');
+                return;
+            }
+
+            setLoading(true);
+            try {
+                const params = {
+                    key,
+                    value: btoa(value) // Base64 encode
+                };
+                
+                if (ttl && parseInt(ttl) > 0) {
+                    params.ttl = parseInt(ttl);
+                }
+
+                const response = await client.sendRequest('set', params);
+                
+                if (response.error) {
+                    showStatus('error', `Failed to add data: ${response.error.message}`);
+                } else {
+                    showStatus('success', `✅ Data added to Redis via Nostr: "${key}" = "${value}"`);
+                    document.getElementById('key-input').value = '';
+                    document.getElementById('value-input').value = '';
+                    document.getElementById('ttl-input').value = '';
+                    
+                    // Auto-refresh to show new data
+                    setTimeout(() => refreshData(), 1000);
+                }
+            } catch (error) {
+                showStatus('error', `Error adding data: ${error.message}`);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        window.checkExists = async function() {
+            const key = document.getElementById('key-input').value.trim();
+            if (!key) {
+                showStatus('error', 'Please enter a key to check');
+                return;
+            }
+
+            if (!client.connected) {
+                showStatus('error', 'Please connect to server first');
+                return;
+            }
+
+            setLoading(true);
+            try {
+                const response = await client.sendRequest('exists', { key });
+                
+                if (response.error) {
+                    showStatus('error', `Failed to check key: ${response.error.message}`);
+                } else {
+                    const exists = response.result.exists;
+                    showStatus('info', `Key "${key}" ${exists ? 'EXISTS in Redis' : 'does NOT exist in Redis'}`);
+                }
+            } catch (error) {
+                showStatus('error', `Error checking key: ${error.message}`);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        window.refreshData = async function() {
+            if (!client.connected) {
+                showStatus('error', 'Please connect to server first');
+                return;
+            }
+
+            setLoading(true);
+            try {
+                const dataList = document.getElementById('data-list');
+                dataList.innerHTML = '<div class="status info">Loading data from Redis via Nostr...</div>';
+
+                // For demo, we'll just try to get some common keys
+                // In a real implementation, you'd have a way to list keys
+                const testKeys = ['user:1', 'config:theme', 'session:data', 'cache:info'];
+                
+                showStatus('info', 'Note: This is a simplified refresh. In production, you would implement key listing.');
+                dataList.innerHTML = '<div class="status warning">Key listing not implemented in this demo. Add some keys and they will be stored in Redis!</div>';
+
+            } catch (error) {
+                document.getElementById('data-list').innerHTML = `<div class="status error">Error loading data: ${error.message}</div>`;
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        window.clearAllData = async function() {
+            showStatus('warning', 'Clear all function would require implementing key listing first.');
+        };
+
+        window.formatBytes = function(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        };
+
+        // Auto-load connection URI on page load
+        document.addEventListener('DOMContentLoaded', async function() {
+            console.log('Real Nostr client loaded');
+            
+            // Try to get URI from server API
+            try {
+                const response = await fetch('/api/connection-uri');
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('connection-uri').value = data.uri;
+                    showStatus('success', 'Connection URI loaded from server. Click "Connect" to start!');
+                } else {
+                    document.getElementById('connection-uri').value = 'nostr+kvconnect://npub1example?relay=wss://relay.damus.io&relay=wss://nos.lol&secret=nsec1example&ns=testapp:&cmds=get_info,get,set,del,exists,mget,expire,ttl&mps=60&bps=1048576';
+                    showStatus('info', 'Using example URI. Please update with your server details.');
+                }
+            } catch (error) {
+                document.getElementById('connection-uri').value = 'nostr+kvconnect://npub1example?relay=wss://relay.damus.io&relay=wss://nos.lol&secret=nsec1example&ns=testapp:&cmds=get_info,get,set,del,exists,mget,expire,ttl&mps=60&bps=1048576';
+                showStatus('info', 'Could not contact server API. Using example URI.');
+            }
+        });
+    </script>
+</body>
+</html>

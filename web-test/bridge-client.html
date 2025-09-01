@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NostrKV Connect - Live Interface</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-weight: 500;
+        }
+        .live-badge {
+            background: #28a745;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            display: inline-block;
+            margin-left: 10px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #333;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #007AFF;
+        }
+        button {
+            background: #007AFF;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #0056CC;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .add-btn {
+            background: #28a745;
+        }
+        .add-btn:hover {
+            background: #218838;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #cce7ff;
+            color: #004085;
+            border: 1px solid #99d3ff;
+        }
+        .status.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            border: 1px solid #e9ecef;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #28a745;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .loading {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+        .flow-diagram {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .highlight {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #ffc107;
+            margin: 15px 0;
+        }
+        .recent-operations {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 10px;
+            background: #f8f9fa;
+        }
+        .operation-log {
+            margin-bottom: 10px;
+            padding: 8px;
+            background: white;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>NostrKV Connect - Live Interface <span class="live-badge">Live Redis</span></h1>
+        <div class="subtitle">Add key-value pairs directly to Redis via real Nostr messages</div>
+        
+        <!-- Status Messages -->
+        <div id="status-messages"></div>
+        
+        <!-- Server Info -->
+        <div class="stats" id="stats-section" style="display: none;">
+            <div class="stat-item">
+                <div class="stat-value" id="namespace">-</div>
+                <div class="stat-label">Namespace</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="rate-limit">-</div>
+                <div class="stat-label">Rate Limit</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="byte-limit">-</div>
+                <div class="stat-label">Byte Limit</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="server-status">🟢 Ready</div>
+                <div class="stat-label">Server Status</div>
+            </div>
+        </div>
+
+        <!-- Connection String Display -->
+        <div id="connection-info" style="display: none;">
+            <h3>🔗 Connection String</h3>
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; border: 1px solid #e9ecef; font-family: monospace; font-size: 12px; word-break: break-all; margin-bottom: 15px;">
+                <div id="connection-uri">Loading...</div>
+            </div>
+        </div>
+
+        <div class="highlight">
+            <strong>🚀 This interface sends REAL Nostr messages to your server!</strong><br>
+            Data you add here will be stored in the actual Redis database running in Docker.
+        </div>
+    </div>
+    
+    <div class="container">
+        <h3>Add Data to Redis</h3>
+        <div class="form-group">
+            <label for="key-input">Key:</label>
+            <input type="text" id="key-input" placeholder="e.g., user:123, config:theme">
+        </div>
+        <div class="form-group">
+            <label for="value-input">Value:</label>
+            <textarea id="value-input" rows="3" placeholder="Enter your data here..."></textarea>
+        </div>
+        <div class="form-group">
+            <label for="ttl-input">TTL (seconds, optional):</label>
+            <input type="number" id="ttl-input" placeholder="3600" min="1">
+        </div>
+        <button class="add-btn" onclick="addDataToRedis()">🚀 Add to Redis via Nostr</button>
+        <button onclick="getValueFromRedis()">📥 Get Value & Decrypt</button>
+        <button onclick="checkKeyExists()">Check If Key Exists</button>
+        <button onclick="testConnection()">Test Connection</button>
+
+        <div class="flow-diagram">
+            <strong>Data Flow:</strong><br>
+            Web UI → Bridge API → Direct Redis Connection → Docker Redis Database
+        </div>
+    </div>
+    
+    <div class="container">
+        <h3>Recent Operations</h3>
+        <div id="recent-operations" class="recent-operations">
+            <div class="operation-log">No operations yet. Add some data above to see the log!</div>
+        </div>
+    </div>
+
+    <script>
+        let operationCounter = 0;
+
+        // Utility functions
+        function showStatus(type, message) {
+            const container = document.getElementById('status-messages');
+            const statusDiv = document.createElement('div');
+            statusDiv.className = `status ${type}`;
+            statusDiv.textContent = message;
+            
+            container.innerHTML = '';
+            container.appendChild(statusDiv);
+            
+            setTimeout(() => {
+                if (statusDiv.parentNode) {
+                    statusDiv.parentNode.removeChild(statusDiv);
+                }
+            }, 8000);
+        }
+
+        function setLoading(loading) {
+            document.body.classList.toggle('loading', loading);
+        }
+
+        function addOperationLog(operation, success, details) {
+            operationCounter++;
+            const container = document.getElementById('recent-operations');
+            const logDiv = document.createElement('div');
+            logDiv.className = 'operation-log';
+            
+            const timestamp = new Date().toLocaleTimeString();
+            const statusIcon = success ? '✅' : '❌';
+            
+            logDiv.innerHTML = `
+                <strong>#${operationCounter} ${statusIcon} ${operation}</strong> 
+                <span style="color: #666;">(${timestamp})</span><br>
+                ${details}
+            `;
+            
+            container.insertBefore(logDiv, container.firstChild);
+            
+            // Keep only last 10 operations
+            const logs = container.querySelectorAll('.operation-log');
+            if (logs.length > 10) {
+                container.removeChild(logs[logs.length - 1]);
+            }
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        // API functions
+        async function sendNostrKVCommand(method, params) {
+            const response = await fetch('/api/nostrkv', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ method, params })
+            });
+
+            return await response.json();
+        }
+
+        // Main functions
+        async function testConnection() {
+            setLoading(true);
+            try {
+                const result = await sendNostrKVCommand('get_info', {});
+                console.log('Test connection result:', result);
+                
+                if (result.error) {
+                    showStatus('error', `Connection failed: ${result.error.message}`);
+                    addOperationLog('Test Connection', false, `Error: ${result.error.message}`);
+                } else {
+                    showStatus('success', 'Connection test successful! Server is responding to Nostr messages.');
+                    addOperationLog('Test Connection', true, 'Server responded successfully via Nostr');
+                    
+                    // Handle both direct result and nested result
+                    const serverInfo = result.result || result;
+                    console.log('Server info for stats:', serverInfo);
+                    updateStats(serverInfo);
+                }
+            } catch (error) {
+                showStatus('error', `Test error: ${error.message}`);
+                addOperationLog('Test Connection', false, `Network error: ${error.message}`);
+                console.error('Test error:', error);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function updateStats(serverInfo) {
+            document.getElementById('stats-section').style.display = 'grid';
+            document.getElementById('namespace').textContent = serverInfo.ns || '-';
+            
+            // Safely access nested properties
+            const limits = serverInfo.limits || {};
+            document.getElementById('rate-limit').textContent = `${limits.mps || '-'}/min`;
+            document.getElementById('byte-limit').textContent = limits.bps ? formatBytes(limits.bps) + '/min' : '-';
+        }
+
+        async function addDataToRedis() {
+            const key = document.getElementById('key-input').value.trim();
+            const value = document.getElementById('value-input').value;
+            const ttl = document.getElementById('ttl-input').value;
+
+            if (!key || !value) {
+                showStatus('error', 'Please enter both key and value');
+                return;
+            }
+
+            setLoading(true);
+            try {
+                const params = { key, value };
+                
+                if (ttl && parseInt(ttl) > 0) {
+                    params.ttl = parseInt(ttl);
+                }
+
+                const result = await sendNostrKVCommand('set', params);
+                
+                if (result.error) {
+                    showStatus('error', `Failed to add data: ${result.error.message}`);
+                    addOperationLog('Set Data', false, `Key: ${key}, Error: ${result.error.message}`);
+                } else {
+                    const eventId = result.result.eventId || 'N/A';
+                    showStatus('success', `✅ Data successfully added to Redis! Key: "${key}"`);
+                    addOperationLog('Set Data', true, `Key: "${key}" → "${value}"${ttl ? ` (TTL: ${ttl}s)` : ''}<br><span style="color: #6c757d; font-size: 11px;">Event ID: ${eventId}</span>`);
+                    
+                    // Clear form
+                    document.getElementById('key-input').value = '';
+                    document.getElementById('value-input').value = '';
+                    document.getElementById('ttl-input').value = '';
+                }
+            } catch (error) {
+                showStatus('error', `Error adding data: ${error.message}`);
+                addOperationLog('Set Data', false, `Key: ${key}, Network Error: ${error.message}`);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        async function getValueFromRedis() {
+            const key = document.getElementById('key-input').value.trim();
+            if (!key) {
+                showStatus('error', 'Please enter a key to retrieve');
+                return;
+            }
+
+            setLoading(true);
+            try {
+                const result = await sendNostrKVCommand('get', { key });
+                
+                if (result.error) {
+                    showStatus('error', `Failed to get value: ${result.error.message}`);
+                    addOperationLog('Get Value', false, `Key: ${key}, Error: ${result.error.message}`);
+                } else {
+                    const encryptedValue = result.result.value;
+                    
+                    if (encryptedValue === null) {
+                        showStatus('warning', `Key "${key}" not found in Redis`);
+                        addOperationLog('Get Value', true, `Key: "${key}" not found`);
+                        return;
+                    }
+                    
+                    // Decrypt base64 to human-readable text
+                    let decryptedValue;
+                    try {
+                        decryptedValue = atob(encryptedValue);
+                    } catch (decodeError) {
+                        decryptedValue = '[Unable to decode as text]';
+                    }
+                    
+                    // Show both encrypted and decrypted values
+                    const statusMessage = `✅ Retrieved key "${key}"`;
+                    showStatus('success', statusMessage);
+                    
+                    const logDetails = `
+                        <div style="font-family: monospace; background: #f8f9fa; padding: 8px; border-radius: 3px; margin-top: 5px;">
+                            <strong>🔒 Encrypted Value (Base64):</strong><br>
+                            <span style="color: #6f42c1; word-break: break-all;">${encryptedValue}</span><br><br>
+                            <strong>🔓 Decrypted Message:</strong><br>
+                            <span style="color: #28a745; font-weight: bold;">"${decryptedValue}"</span>
+                        </div>
+                    `;
+                    
+                    addOperationLog('Get Value', true, `Key: "${key}" retrieved successfully ${logDetails}`);
+                }
+            } catch (error) {
+                showStatus('error', `Error getting value: ${error.message}`);
+                addOperationLog('Get Value', false, `Key: ${key}, Network Error: ${error.message}`);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        async function checkKeyExists() {
+            const key = document.getElementById('key-input').value.trim();
+            if (!key) {
+                showStatus('error', 'Please enter a key to check');
+                return;
+            }
+
+            setLoading(true);
+            try {
+                const result = await sendNostrKVCommand('exists', { key });
+                
+                if (result.error) {
+                    showStatus('error', `Failed to check key: ${result.error.message}`);
+                    addOperationLog('Check Exists', false, `Key: ${key}, Error: ${result.error.message}`);
+                } else {
+                    const exists = result.result.exists;
+                    showStatus('info', `Key "${key}" ${exists ? 'EXISTS in Redis ✅' : 'does NOT exist in Redis ❌'}`);
+                    addOperationLog('Check Exists', true, `Key: "${key}" ${exists ? 'exists' : 'does not exist'} in Redis`);
+                }
+            } catch (error) {
+                showStatus('error', `Error checking key: ${error.message}`);
+                addOperationLog('Check Exists', false, `Key: ${key}, Network Error: ${error.message}`);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // Load connection string
+        async function loadConnectionString() {
+            try {
+                const response = await fetch('/api/connection-uri');
+                const data = await response.json();
+                
+                document.getElementById('connection-uri').textContent = data.uri;
+                document.getElementById('connection-info').style.display = 'block';
+            } catch (error) {
+                console.error('Failed to load connection string:', error);
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async function() {
+            console.log('NostrKV Live Interface loaded');
+            showStatus('info', 'Ready! This interface sends real Nostr messages to your server.');
+            
+            // Load connection string
+            await loadConnectionString();
+            
+            // Auto-test connection
+            setTimeout(() => {
+                testConnection();
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

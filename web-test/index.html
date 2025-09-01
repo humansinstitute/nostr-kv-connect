@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NostrKV Connect Web Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #333;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #007AFF;
+        }
+        button {
+            background: #007AFF;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #0056CC;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #cce7ff;
+            color: #004085;
+            border: 1px solid #99d3ff;
+        }
+        .data-list {
+            margin-top: 20px;
+        }
+        .data-item {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        .data-item .key {
+            font-weight: 600;
+            color: #495057;
+            margin-right: 15px;
+            word-break: break-word;
+            flex: 0 0 200px;
+        }
+        .data-item .value {
+            flex: 1;
+            color: #6c757d;
+            word-break: break-word;
+            background: white;
+            padding: 8px 12px;
+            border-radius: 3px;
+            border: 1px solid #dee2e6;
+        }
+        .data-item .actions {
+            flex: 0 0 auto;
+            margin-left: 15px;
+        }
+        .data-item .actions button {
+            background: #dc3545;
+            padding: 5px 10px;
+            font-size: 12px;
+            margin: 0;
+        }
+        .data-item .actions button:hover {
+            background: #c82333;
+        }
+        .config-section {
+            border-top: 2px solid #eee;
+            padding-top: 20px;
+            margin-top: 20px;
+        }
+        .config-section h3 {
+            margin-top: 0;
+            color: #555;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            border: 1px solid #e9ecef;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007AFF;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .loading {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+        @media (max-width: 600px) {
+            .data-item {
+                flex-direction: column;
+            }
+            .data-item .key,
+            .data-item .value {
+                flex: none;
+                margin-right: 0;
+                margin-bottom: 10px;
+            }
+            .stats {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>NostrKV Connect Web Test</h1>
+        <div class="subtitle">Add key-value pairs and view stored data</div>
+        
+        <!-- Status Messages -->
+        <div id="status-messages"></div>
+        
+        <!-- Configuration Section -->
+        <div class="config-section">
+            <h3>Connection Configuration</h3>
+            <div class="form-group">
+                <label for="connection-uri">NostrKV Connect URI:</label>
+                <textarea id="connection-uri" rows="3" placeholder="nostr+kvconnect://npub1...?relay=wss://..."></textarea>
+            </div>
+            <button onclick="testConnection()">Test Connection</button>
+            <button onclick="loadServerInfo()">Get Server Info</button>
+        </div>
+        
+        <!-- Stats Section -->
+        <div class="stats" id="stats-section" style="display: none;">
+            <div class="stat-item">
+                <div class="stat-value" id="total-keys">0</div>
+                <div class="stat-label">Total Keys</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="namespace">-</div>
+                <div class="stat-label">Namespace</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="rate-limit">-</div>
+                <div class="stat-label">Rate Limit</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="byte-limit">-</div>
+                <div class="stat-label">Byte Limit</div>
+            </div>
+        </div>
+        
+        <!-- Data Entry Form -->
+        <div class="config-section">
+            <h3>Add Data</h3>
+            <div class="form-group">
+                <label for="key-input">Key:</label>
+                <input type="text" id="key-input" placeholder="e.g., user:123, config:theme">
+            </div>
+            <div class="form-group">
+                <label for="value-input">Value:</label>
+                <textarea id="value-input" rows="3" placeholder="Enter your data here..."></textarea>
+            </div>
+            <div class="form-group">
+                <label for="ttl-input">TTL (seconds, optional):</label>
+                <input type="number" id="ttl-input" placeholder="3600" min="1">
+            </div>
+            <button onclick="addData()">Add Data</button>
+            <button onclick="checkExists()">Check If Key Exists</button>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h3>Stored Data</h3>
+        <button onclick="refreshData()">Refresh Data</button>
+        <button onclick="clearAllData()">Clear All Data</button>
+        <div id="data-list" class="data-list">
+            <div class="status info">Click "Refresh Data" to load stored key-value pairs</div>
+        </div>
+    </div>
+
+    <script>
+        // Simple NostrKV client implementation
+        class NostrKVWebClient {
+            constructor() {
+                this.pool = null;
+                this.keyring = null;
+                this.serverPubkey = null;
+                this.relays = [];
+                this.namespace = '';
+                this.dmCrypto = new DMCrypto();
+                this.isConnected = false;
+            }
+
+            async initFromURI(uri) {
+                const parsed = this.parseURI(uri);
+                this.serverPubkey = parsed.serverPubkey;
+                this.relays = parsed.relays;
+                this.namespace = parsed.namespace;
+                this.isConnected = true;
+                
+                // For demo purposes, we'll simulate the client
+                // In a real implementation, you'd need the full nostr-tools library
+                showStatus('success', 'Connection initialized successfully. Demo mode active.');
+                return true;
+            }
+
+            parseURI(uri) {
+                try {
+                    const url = new URL(uri);
+                    const serverNpub = url.hostname;
+                    const params = url.searchParams;
+                    
+                    return {
+                        serverPubkey: serverNpub,
+                        relays: params.getAll('relay'),
+                        secret: params.get('secret') || '',
+                        namespace: params.get('ns') || ''
+                    };
+                } catch (error) {
+                    throw new Error('Invalid URI format');
+                }
+            }
+
+            // Simulate API calls for demo
+            async sendRequest(method, params) {
+                await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 700));
+                
+                const request = {
+                    method,
+                    params,
+                    id: generateId()
+                };
+
+                // Simulate different responses based on method
+                switch (method) {
+                    case 'get_info':
+                        return {
+                            result: {
+                                methods: ['get_info', 'get', 'set', 'del', 'exists', 'mget', 'expire', 'ttl'],
+                                ns: this.namespace,
+                                limits: {
+                                    mps: 60,
+                                    bps: 1048576,
+                                    maxkey: 256,
+                                    maxval: 65536,
+                                    mget_max: 16
+                                },
+                                encryption: { nip44: true, nip04: true }
+                            },
+                            error: null,
+                            id: request.id
+                        };
+                    
+                    case 'set':
+                        // Store in localStorage for demo
+                        const fullKey = params.key.includes(':') ? params.key : this.namespace + params.key;
+                        localStorage.setItem(`nostrkv:${fullKey}`, JSON.stringify({
+                            value: params.value,
+                            timestamp: Date.now(),
+                            ttl: params.ttl
+                        }));
+                        return {
+                            result: { ok: true },
+                            error: null,
+                            id: request.id
+                        };
+                    
+                    case 'get':
+                        const getKey = params.key.includes(':') ? params.key : this.namespace + params.key;
+                        const stored = localStorage.getItem(`nostrkv:${getKey}`);
+                        if (stored) {
+                            const data = JSON.parse(stored);
+                            // Check TTL
+                            if (data.ttl && Date.now() - data.timestamp > data.ttl * 1000) {
+                                localStorage.removeItem(`nostrkv:${getKey}`);
+                                return { result: { value: null }, error: null, id: request.id };
+                            }
+                            return { result: { value: data.value }, error: null, id: request.id };
+                        }
+                        return { result: { value: null }, error: null, id: request.id };
+                    
+                    case 'exists':
+                        const existsKey = params.key.includes(':') ? params.key : this.namespace + params.key;
+                        const exists = localStorage.getItem(`nostrkv:${existsKey}`) !== null;
+                        return { result: { exists }, error: null, id: request.id };
+                    
+                    case 'del':
+                        const delKey = params.key.includes(':') ? params.key : this.namespace + params.key;
+                        const hadKey = localStorage.getItem(`nostrkv:${delKey}`) !== null;
+                        localStorage.removeItem(`nostrkv:${delKey}`);
+                        return { result: { deleted: hadKey ? 1 : 0 }, error: null, id: request.id };
+                    
+                    case 'mget':
+                        const values = params.keys.map(key => {
+                            const fullKey = key.includes(':') ? key : this.namespace + key;
+                            const stored = localStorage.getItem(`nostrkv:${fullKey}`);
+                            if (stored) {
+                                const data = JSON.parse(stored);
+                                if (data.ttl && Date.now() - data.timestamp > data.ttl * 1000) {
+                                    localStorage.removeItem(`nostrkv:${fullKey}`);
+                                    return null;
+                                }
+                                return data.value;
+                            }
+                            return null;
+                        });
+                        return { result: { values }, error: null, id: request.id };
+                    
+                    default:
+                        return {
+                            result: null,
+                            error: { code: 'NOT_IMPLEMENTED', message: 'Method not implemented in demo' },
+                            id: request.id
+                        };
+                }
+            }
+        }
+
+        // Simple crypto placeholder
+        class DMCrypto {
+            async encrypt(content, senderPrivkey, recipientPubkey) {
+                return { encrypted: btoa(content), method: 'demo' };
+            }
+            
+            async decrypt(encryptedContent, recipientPrivkey, senderPubkey) {
+                return { decrypted: atob(encryptedContent), method: 'demo' };
+            }
+        }
+
+        // Global client instance
+        let client = new NostrKVWebClient();
+
+        // Utility functions
+        function generateId() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                const v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        function showStatus(type, message) {
+            const container = document.getElementById('status-messages');
+            const statusDiv = document.createElement('div');
+            statusDiv.className = `status ${type}`;
+            statusDiv.textContent = message;
+            
+            container.innerHTML = '';
+            container.appendChild(statusDiv);
+            
+            setTimeout(() => {
+                if (statusDiv.parentNode) {
+                    statusDiv.parentNode.removeChild(statusDiv);
+                }
+            }, 5000);
+        }
+
+        function setLoading(loading) {
+            document.body.classList.toggle('loading', loading);
+        }
+
+        // Main functions
+        async function testConnection() {
+            const uri = document.getElementById('connection-uri').value.trim();
+            if (!uri) {
+                showStatus('error', 'Please enter a NostrKV Connect URI');
+                return;
+            }
+
+            setLoading(true);
+            try {
+                // Initialize the client
+                await client.initFromURI(uri);
+                
+                // Test with get_info
+                const response = await client.sendRequest('get_info', {});
+                
+                if (response.error) {
+                    showStatus('error', `Connection failed: ${response.error.message}`);
+                } else {
+                    showStatus('success', 'Connection successful! Demo mode ready.');
+                    updateStats(response.result);
+                }
+            } catch (error) {
+                showStatus('error', `Connection error: ${error.message}`);
+                console.error('Connection error details:', error);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        async function loadServerInfo() {
+            if (!client.isConnected) {
+                showStatus('error', 'Please test connection first');
+                return;
+            }
+
+            setLoading(true);
+            try {
+                const response = await client.sendRequest('get_info', {});
+                if (response.error) {
+                    showStatus('error', `Failed to get server info: ${response.error.message}`);
+                } else {
+                    showStatus('success', 'Server info loaded');
+                    updateStats(response.result);
+                }
+            } catch (error) {
+                showStatus('error', `Error getting server info: ${error.message}`);
+                console.error('Server info error details:', error);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function updateStats(serverInfo) {
+            document.getElementById('stats-section').style.display = 'grid';
+            document.getElementById('namespace').textContent = serverInfo.ns || '-';
+            document.getElementById('rate-limit').textContent = `${serverInfo.limits.mps}/min`;
+            document.getElementById('byte-limit').textContent = formatBytes(serverInfo.limits.bps) + '/min';
+            
+            // Count stored keys
+            let keyCount = 0;
+            for (let i = 0; i < localStorage.length; i++) {
+                if (localStorage.key(i).startsWith('nostrkv:')) {
+                    keyCount++;
+                }
+            }
+            document.getElementById('total-keys').textContent = keyCount;
+        }
+
+        async function addData() {
+            const key = document.getElementById('key-input').value.trim();
+            const value = document.getElementById('value-input').value;
+            const ttl = document.getElementById('ttl-input').value;
+
+            if (!key || !value) {
+                showStatus('error', 'Please enter both key and value');
+                return;
+            }
+
+            if (!client.isConnected) {
+                showStatus('error', 'Please test connection first');
+                return;
+            }
+
+            setLoading(true);
+            try {
+                const params = {
+                    key,
+                    value: btoa(value) // Base64 encode
+                };
+                
+                if (ttl && parseInt(ttl) > 0) {
+                    params.ttl = parseInt(ttl);
+                }
+
+                const response = await client.sendRequest('set', params);
+                
+                if (response.error) {
+                    showStatus('error', `Failed to add data: ${response.error.message}`);
+                } else {
+                    showStatus('success', `Data added successfully: ${key}`);
+                    document.getElementById('key-input').value = '';
+                    document.getElementById('value-input').value = '';
+                    document.getElementById('ttl-input').value = '';
+                    refreshData();
+                }
+            } catch (error) {
+                showStatus('error', `Error adding data: ${error.message}`);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        async function checkExists() {
+            const key = document.getElementById('key-input').value.trim();
+            if (!key) {
+                showStatus('error', 'Please enter a key to check');
+                return;
+            }
+
+            if (!client.isConnected) {
+                showStatus('error', 'Please test connection first');
+                return;
+            }
+
+            setLoading(true);
+            try {
+                const response = await client.sendRequest('exists', { key });
+                
+                if (response.error) {
+                    showStatus('error', `Failed to check key: ${response.error.message}`);
+                } else {
+                    const exists = response.result.exists;
+                    showStatus('info', `Key "${key}" ${exists ? 'exists' : 'does not exist'}`);
+                }
+            } catch (error) {
+                showStatus('error', `Error checking key: ${error.message}`);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        async function refreshData() {
+            if (!client.isConnected) {
+                showStatus('error', 'Please test connection first');
+                return;
+            }
+
+            setLoading(true);
+            try {
+                const dataList = document.getElementById('data-list');
+                dataList.innerHTML = '<div class="status info">Loading data...</div>';
+
+                // Get all stored keys from localStorage (demo)
+                const keys = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key.startsWith('nostrkv:')) {
+                        keys.push(key.substring(8)); // Remove 'nostrkv:' prefix
+                    }
+                }
+
+                if (keys.length === 0) {
+                    dataList.innerHTML = '<div class="status info">No data stored yet. Add some key-value pairs above.</div>';
+                    return;
+                }
+
+                // Get all values
+                const response = await client.sendRequest('mget', { keys });
+                
+                if (response.error) {
+                    dataList.innerHTML = `<div class="status error">Failed to load data: ${response.error.message}</div>`;
+                    return;
+                }
+
+                // Display data
+                let html = '';
+                keys.forEach((key, index) => {
+                    const value = response.result.values[index];
+                    if (value !== null) {
+                        const decodedValue = atob(value); // Base64 decode
+                        const displayKey = key.startsWith(client.namespace) ? 
+                            key.substring(client.namespace.length) : key;
+                        
+                        html += `
+                            <div class="data-item">
+                                <div class="key">${escapeHtml(displayKey)}</div>
+                                <div class="value">${escapeHtml(decodedValue)}</div>
+                                <div class="actions">
+                                    <button onclick="deleteKey('${escapeHtml(key)}')">Delete</button>
+                                </div>
+                            </div>
+                        `;
+                    }
+                });
+
+                if (html === '') {
+                    dataList.innerHTML = '<div class="status info">No valid data found.</div>';
+                } else {
+                    dataList.innerHTML = html;
+                }
+
+                // Update key count
+                document.getElementById('total-keys').textContent = keys.filter((_, i) => response.result.values[i] !== null).length;
+
+            } catch (error) {
+                document.getElementById('data-list').innerHTML = `<div class="status error">Error loading data: ${error.message}</div>`;
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        async function deleteKey(key) {
+            if (!confirm(`Are you sure you want to delete key "${key}"?`)) {
+                return;
+            }
+
+            setLoading(true);
+            try {
+                const response = await client.sendRequest('del', { key });
+                
+                if (response.error) {
+                    showStatus('error', `Failed to delete key: ${response.error.message}`);
+                } else {
+                    showStatus('success', `Key "${key}" deleted`);
+                    refreshData();
+                }
+            } catch (error) {
+                showStatus('error', `Error deleting key: ${error.message}`);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        async function clearAllData() {
+            if (!confirm('Are you sure you want to clear all stored data? This cannot be undone.')) {
+                return;
+            }
+
+            setLoading(true);
+            try {
+                // Get all stored keys
+                const keys = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key.startsWith('nostrkv:')) {
+                        keys.push(key.substring(8));
+                    }
+                }
+
+                // Delete all keys
+                const deletePromises = keys.map(key => client.sendRequest('del', { key }));
+                await Promise.all(deletePromises);
+
+                showStatus('success', `Cleared ${keys.length} keys`);
+                refreshData();
+            } catch (error) {
+                showStatus('error', `Error clearing data: ${error.message}`);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        // Initialize with connection URI
+        document.addEventListener('DOMContentLoaded', async function() {
+            console.log('Page loaded, initializing...');
+            
+            // Try to load from injected variables first
+            if (window.NOSTRKV_CONNECTION_URI) {
+                console.log('Found injected URI:', window.NOSTRKV_CONNECTION_URI);
+                document.getElementById('connection-uri').value = window.NOSTRKV_CONNECTION_URI;
+                showStatus('info', 'Connection URI loaded automatically from server');
+                
+                // Auto-initialize the client
+                try {
+                    await client.initFromURI(window.NOSTRKV_CONNECTION_URI);
+                    console.log('Client auto-initialized successfully');
+                } catch (error) {
+                    console.error('Auto-init failed:', error);
+                }
+                
+                // Auto-populate server info if available
+                if (window.NOSTRKV_SERVER_INFO) {
+                    const info = window.NOSTRKV_SERVER_INFO;
+                    document.getElementById('stats-section').style.display = 'grid';
+                    document.getElementById('namespace').textContent = info.namespace || '-';
+                    document.getElementById('rate-limit').textContent = `${info.limits.mps}/min`;
+                    document.getElementById('byte-limit').textContent = formatBytes(info.limits.bps) + '/min';
+                }
+            } else {
+                console.log('No injected URI found, trying API...');
+                // Try to fetch from API endpoint
+                await fetchConnectionURI();
+            }
+        });
+
+        async function fetchConnectionURI() {
+            try {
+                console.log('Fetching URI from API...');
+                const response = await fetch('/api/connection-uri');
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Got API response:', data);
+                    document.getElementById('connection-uri').value = data.uri;
+                    showStatus('success', 'Connection URI loaded from server API');
+                    
+                    // Auto-initialize the client
+                    try {
+                        await client.initFromURI(data.uri);
+                        console.log('Client auto-initialized from API');
+                    } catch (error) {
+                        console.error('Auto-init from API failed:', error);
+                    }
+                    
+                    // Update server info
+                    if (data.serverInfo) {
+                        const info = data.serverInfo;
+                        document.getElementById('stats-section').style.display = 'grid';
+                        document.getElementById('namespace').textContent = info.namespace || '-';
+                        document.getElementById('rate-limit').textContent = `${info.limits.mps}/min`;
+                        document.getElementById('byte-limit').textContent = formatBytes(info.limits.bps) + '/min';
+                    }
+                } else {
+                    console.log('API not available, using fallback URI');
+                    // Fallback to example URI
+                    const fallbackURI = 'nostr+kvconnect://npub1example?relay=wss://relay.damus.io&relay=wss://nos.lol&secret=nsec1example&ns=testapp:&cmds=get_info,get,set,del,exists,mget,expire,ttl&mps=60&bps=1048576';
+                    document.getElementById('connection-uri').value = fallbackURI;
+                    showStatus('info', 'Using example URI. Please update with your server details.');
+                    
+                    // Auto-initialize with fallback
+                    try {
+                        await client.initFromURI(fallbackURI);
+                        console.log('Client initialized with fallback URI');
+                    } catch (error) {
+                        console.error('Fallback init failed:', error);
+                    }
+                }
+            } catch (error) {
+                console.log('Fetch error, using demo mode:', error);
+                // Fallback to example URI
+                const fallbackURI = 'nostr+kvconnect://npub1example?relay=wss://relay.damus.io&relay=wss://nos.lol&secret=nsec1example&ns=testapp:&cmds=get_info,get,set,del,exists,mget,expire,ttl&mps=60&bps=1048576';
+                document.getElementById('connection-uri').value = fallbackURI;
+                showStatus('info', 'Demo mode - using example URI');
+                
+                // Auto-initialize with fallback
+                try {
+                    await client.initFromURI(fallbackURI);
+                    console.log('Client initialized in demo mode');
+                } catch (error) {
+                    console.error('Demo init failed:', error);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
