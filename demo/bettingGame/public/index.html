@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NostrKV Betting Game</title>
+    <link rel="stylesheet" href="/demo/bettingGame/styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Home/Create Game Screen -->
+        <div id="home-screen" class="screen">
+            <div class="container">
+                <h1>⚡ NostrKV Betting Game</h1>
+                <p class="subtitle">A fast-paced party game powered by Nostr</p>
+                <button id="new-game-btn" class="btn btn-primary">
+                    <span>🎮</span> New Game
+                </button>
+            </div>
+        </div>
+
+        <!-- Lobby Screen -->
+        <div id="lobby-screen" class="screen hidden">
+            <div class="container">
+                <h2>Get Ready!</h2>
+                <div class="countdown-display">
+                    <div class="countdown-label">Game starts in</div>
+                    <div id="lobby-countdown" class="countdown-timer">30</div>
+                </div>
+                
+                <div class="registration-box">
+                    <h3>Enter your NPub to join</h3>
+                    <input type="text" 
+                           id="npub-input" 
+                           placeholder="npub1..." 
+                           class="npub-input">
+                    <button id="register-btn" class="btn btn-secondary">Join Game</button>
+                    <div id="registration-error" class="error-message hidden"></div>
+                    <div id="registration-success" class="success-message hidden"></div>
+                </div>
+
+                <div class="players-count">
+                    <span id="players-count">0</span> players joined
+                </div>
+
+                <div class="share-link">
+                    <p>Share this link:</p>
+                    <div class="link-display">
+                        <input type="text" id="share-link" readonly>
+                        <button id="copy-link-btn" class="btn btn-small">Copy</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Active Screen -->
+        <div id="game-screen" class="screen hidden">
+            <div class="container">
+                <div class="game-header">
+                    <h2>GO! Spam that button!</h2>
+                    <div id="final-countdown" class="final-countdown hidden">
+                        <span id="final-seconds">3</span>
+                    </div>
+                </div>
+
+                <div class="bet-section">
+                    <button id="bet-btn" class="bet-button">
+                        <span class="bet-icon">🎯</span>
+                        <span class="bet-text">BET!</span>
+                    </button>
+                    <div id="bet-feedback" class="bet-feedback"></div>
+                </div>
+
+                <div class="leaderboard">
+                    <h3>Current Holder</h3>
+                    <div id="current-holder" class="holder-display">
+                        <div class="holder-avatar"></div>
+                        <div class="holder-name">Nobody yet...</div>
+                    </div>
+
+                    <h3>Recent Bettors</h3>
+                    <div id="recent-bettors" class="recent-bettors">
+                        <div class="empty-state">No bets yet...</div>
+                    </div>
+                </div>
+
+                <!-- Redis Debug Panel -->
+                <div class="debug-panel">
+                    <div class="debug-header">
+                        <h3>🔍 Redis Debug View</h3>
+                        <button id="toggle-debug" class="btn btn-small">Toggle</button>
+                    </div>
+                    <div id="debug-content" class="debug-content hidden">
+                        <div class="debug-section">
+                            <h4>Game State</h4>
+                            <pre id="debug-game-state"></pre>
+                        </div>
+                        <div class="debug-section">
+                            <h4>Redis Keys</h4>
+                            <div id="debug-redis-keys"></div>
+                        </div>
+                        <div class="debug-section">
+                            <h4>WebSocket Messages</h4>
+                            <div id="debug-ws-messages" class="debug-messages"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Winner Screen -->
+        <div id="winner-screen" class="screen hidden">
+            <div class="container">
+                <div class="winner-celebration">
+                    <h1>🎉 WINNER! 🎉</h1>
+                    <div class="puppy-animation">
+                        <div class="puppy">🐕</div>
+                    </div>
+                    <div id="winner-display" class="winner-display">
+                        <div class="winner-avatar"></div>
+                        <div class="winner-name"></div>
+                    </div>
+                    <div class="prize-stub">
+                        <p>Future: Zap payout integration coming soon!</p>
+                    </div>
+                    <button id="play-again-btn" class="btn btn-primary">Play Again</button>
+                </div>
+
+                <!-- Redis Debug Panel on Winner Screen -->
+                <div class="debug-panel">
+                    <div class="debug-header">
+                        <h3>🏆 Game Results & Redis Data</h3>
+                        <button id="winner-toggle-debug" class="btn btn-small">Show Details</button>
+                    </div>
+                    <div id="winner-debug-content" class="debug-content hidden">
+                        <div class="debug-section">
+                            <h4>Final Game State</h4>
+                            <pre id="winner-debug-game-state"></pre>
+                        </div>
+                        <div class="debug-section">
+                            <h4>Redis Keys Used</h4>
+                            <div id="winner-debug-redis-keys"></div>
+                        </div>
+                        <div class="debug-section">
+                            <h4>Game Timeline</h4>
+                            <div id="winner-debug-timeline" class="debug-messages"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/demo/bettingGame/app.js"></script>
+</body>
+</html>
