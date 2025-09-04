@@ -81,6 +81,11 @@ It demonstrates:
             border-color: #28a745;
             background: #f8fff9;
         }
+        .step.ready {
+            border-color: #007AFF;
+            background: #f0f8ff;
+            box-shadow: 0 2px 8px rgba(0, 122, 255, 0.1);
+        }
         .step.loading {
             border-color: #ffc107;
             background: #fffbf0;
@@ -258,6 +263,10 @@ It demonstrates:
             <em>Perfect example for building your own NostrKV integrations.</em>
         </div>
         
+        <div class="info-box" style="background: #e8f4fd; border: 1px solid #007AFF; margin: 20px 0;">
+            <strong>💡 How to use:</strong> Once connected (Step 1), all operations (Steps 2-4) become available immediately. You can use them in any order - no need to go sequentially!
+        </div>
+        
         <div id="status-messages"></div>
         <div id="connection-status" class="status info" style="display: none;">
             📶 Connection Status: <span id="connection-text">Disconnected</span>
@@ -289,7 +298,7 @@ It demonstrates:
     <!-- Step 2: Get Server Info -->
     <div class="step" id="step2">
         <h2><span class="step-number">2</span>Get Server Information</h2>
-        <p>Send encrypted get_info request via Nostr:</p>
+        <p>Send encrypted get_info request via Nostr (available after connection):</p>
         
         <button onclick="getServerInfo()" id="get-info-btn" disabled>Send get_info Request</button>
         
@@ -302,6 +311,7 @@ It demonstrates:
     <!-- Step 3: Set Key-Value -->
     <div class="step" id="step3">
         <h2><span class="step-number">3</span>Set Key-Value</h2>
+        <p>Store data in your isolated database (available after connection):</p>
         <p>Send encrypted set request via Nostr:</p>
         
         <div class="form-group">
@@ -325,6 +335,7 @@ It demonstrates:
     <!-- Step 4: Get Key-Value -->
     <div class="step" id="step4">
         <h2><span class="step-number">4</span>Get Key-Value</h2>
+        <p>Retrieve data from your database (available after connection):</p>
         <p>Send encrypted get request via Nostr:</p>
         
         <div class="form-group">
@@ -1223,6 +1234,30 @@ It demonstrates:
                 });
             }
         }
+        
+        function enableAllKVOperations() {
+            // Enable all KV operation buttons once connected
+            const allButtons = [
+                'get-info-btn',
+                'set-key', 'set-value', 'set-ttl', 'set-btn',
+                'get-key', 'get-btn', 'exists-btn'
+            ];
+            
+            allButtons.forEach(id => {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.disabled = false;
+                }
+            });
+            
+            // Mark all steps as ready (available)
+            [2, 3, 4].forEach(stepNum => {
+                const step = document.getElementById(`step${stepNum}`);
+                if (step) {
+                    step.classList.add('ready');
+                }
+            });
+        }
 
         /*
         ====================================================================
@@ -1280,9 +1315,11 @@ It demonstrates:
                 // Connect to relays
                 await client.connectToRelays();
                 
-                showStatus('success', 'Connected to Nostr relays successfully!');
+                showStatus('success', 'Connected to Nostr relays successfully! All KV operations are now available.');
                 setStepCompleted(1);
-                enableStepButtons(2);
+                
+                // Enable ALL KV operations immediately after connection
+                enableAllKVOperations();
                 
             } catch (error) {
                 showStatus('error', `Connection failed: ${error.message}`);
