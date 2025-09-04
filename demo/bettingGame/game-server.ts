@@ -2,7 +2,7 @@ import 'websocket-polyfill';
 import { WebSocket } from 'ws';
 import { randomBytes } from 'crypto';
 import { Redis } from 'ioredis';
-import { nip19, SimplePool, Event, getPublicKey, getEventHash, signEvent } from 'nostr-tools';
+import { nip19, SimplePool, Event, getPublicKey, getEventHash, signEvent, nip44, finalizeEvent } from 'nostr-tools';
 import { RateLimiterRedis } from 'rate-limiter-flexible';
 import { pino } from 'pino';
 import { loadConfig } from '../../src/config.js';
@@ -25,6 +25,7 @@ const config = {
   betsPerSecond: parseInt(process.env.BETS_PER_SECOND || '4'),
   betDebounceMs: parseInt(process.env.BET_DEBOUNCE_MS || '200'),
   gameTtlHours: parseInt(process.env.GAME_TTL_HOURS || '24'),
+  gameNsec: process.env.GAME_NSEC, // For DM sending
   redis: {
     host: process.env.REDIS_HOST || 'localhost',
     port: parseInt(process.env.REDIS_PORT || '6379'),
@@ -34,7 +35,7 @@ const config = {
 
 interface GameState {
   id: string;
-  status: 'lobby' | 'active' | 'ended';
+  status: 'lobby' | 'prestart' | 'active' | 'ended';
   startAt: number;
   endAt?: number;
   holder?: string;
@@ -42,6 +43,10 @@ interface GameState {
   players: Set<string>;
   recentBettors: string[];
   lastBetTimes: Map<string, number>;
+  // Prize system (in-memory only)
+  prizeToken?: string;
+  prizeSummary?: { display: string, amount?: string | number };
+  adminKey: string;
 }
 
 interface PlayerProfile {
@@ -113,22 +118,23 @@ export class BettingGameServer {
   }
 
   // Create a new game
-  async createGame(): Promise<string> {
+  async createGame(): Promise<{ gameId: string; adminKey: string }> {
     const gameId = this.generateGameId();
-    const startAt = Date.now() + 30000; // Start in 30 seconds
+    const adminKey = randomBytes(16).toString('base64url'); // Generate admin key
 
     const gameState: GameState = {
       id: gameId,
       status: 'lobby',
-      startAt,
+      startAt: 0, // No automatic start time - manual start only
       players: new Set(),
       recentBettors: [],
-      lastBetTimes: new Map()
+      lastBetTimes: new Map(),
+      adminKey
     };
 
     this.games.set(gameId, gameState);
 
-    // Store in Redis with TTL
+    // Store in Redis with TTL (without adminKey and prizeToken)
     try {
       await this.redis.setex(
         `game:${gameId}`,
@@ -137,7 +143,8 @@ export class BettingGameServer {
           id: gameId,
           status: gameState.status,
           startAt: gameState.startAt,
-          players: []
+          players: [],
+          prizeSummary: gameState.prizeSummary
         })
       );
       logger.debug({ gameId }, 'Game stored in Redis');
@@ -146,21 +153,23 @@ export class BettingGameServer {
       throw error;
     }
 
-    // Schedule game start
-    setTimeout(() => this.startGame(gameId), 30000);
+    // Do NOT auto-schedule game start - manual start only
 
-    logger.info({ gameId, startAt }, 'Game created');
-    return gameId;
+    logger.info({ gameId, adminKey: adminKey.slice(0, 8) + '...' }, 'Game created with admin key');
+    return { gameId, adminKey };
   }
 
   // Start a game
   private async startGame(gameId: string): Promise<void> {
     const game = this.games.get(gameId);
-    if (!game || game.status !== 'lobby') return;
+    if (!game) return;
+    if (game.status !== 'lobby' && game.status !== 'prestart') return;
 
     // Random end time between 20-40 seconds
     const duration = 20000 + Math.random() * 20000;
-    game.endAt = Date.now() + duration;
+    const now = Date.now();
+    game.startAt = now; // Update start time to actual start
+    game.endAt = now + duration;
     game.status = 'active';
 
     // Update Redis
@@ -226,6 +235,16 @@ export class BettingGameServer {
       })
     );
 
+    // Send prize DM if winner and prize token exist
+    let dmEventId: string | undefined;
+    if (game.winner && game.prizeToken) {
+      try {
+        dmEventId = await this.sendPrizeDM(gameId, game.winner, game.prizeToken);
+      } catch (error) {
+        logger.error({ error, gameId, winner: game.winner }, 'Failed to send prize DM');
+      }
+    }
+
     // Broadcast winner
     this.broadcast(gameId, {
       type: 'gameEnd',
@@ -233,13 +252,29 @@ export class BettingGameServer {
       winnerProfile: game.winner ? this.profiles.get(game.winner) : undefined
     });
 
-    logger.info({ gameId, winner: game.winner }, 'Game ended');
+    // Broadcast prize sent if successful
+    if (dmEventId) {
+      this.broadcast(gameId, {
+        type: 'prizeSent',
+        eventId: dmEventId,
+        recipientNpub: game.winner
+      });
+    }
+
+    // Purge token from memory
+    if (game.prizeToken) {
+      delete game.prizeToken;
+      logger.debug({ gameId }, 'Prize token purged from memory');
+    }
+
+    logger.info({ gameId, winner: game.winner, dmEventId }, 'Game ended');
   }
 
   // Register a player
   async registerPlayer(gameId: string, npub: string): Promise<PlayerProfile> {
     const game = this.games.get(gameId);
     if (!game) throw new Error('Game not found');
+    if (game.status !== 'lobby') throw new Error('Registration closed - game is starting or in progress');
 
     // Validate npub
     let pubkey: string;
@@ -413,7 +448,8 @@ export class BettingGameServer {
         npub: n,
         ...this.profiles.get(n)
       })),
-      timeRemaining: showTimer ? timeRemaining : undefined
+      timeRemaining: showTimer ? timeRemaining : undefined,
+      prizeSummary: game.prizeSummary // Include prize summary (but not raw token)
     };
   }
 
@@ -445,6 +481,223 @@ export class BettingGameServer {
         ws.send(message);
       }
     }
+  }
+
+  // Set prize for a game (admin only)
+  async setPrize(gameId: string, token: string, adminKey: string): Promise<{ prizeSummary: any }> {
+    const game = this.games.get(gameId);
+    if (!game) throw new Error('Game not found');
+    if (game.adminKey !== adminKey) throw new Error('Invalid admin key');
+    if (game.status !== 'lobby') throw new Error('Can only set prize during lobby');
+
+    // Store token in memory only
+    game.prizeToken = token;
+    
+    // Create best-effort prize summary
+    const prizeSummary = this.parseCashuToken(token);
+    game.prizeSummary = prizeSummary;
+
+    // Log the token as requested by PM
+    logger.info({ gameId, prizeToken: token }, 'Prize token set');
+
+    // Broadcast prize update to all clients (but not the raw token)
+    this.broadcast(gameId, {
+      type: 'prizeUpdated',
+      prizeSummary
+    });
+
+    // Update Redis (without token or adminKey)
+    try {
+      await this.redis.set(
+        `game:${gameId}`,
+        JSON.stringify({
+          id: gameId,
+          status: game.status,
+          startAt: game.startAt,
+          players: Array.from(game.players),
+          prizeSummary
+        })
+      );
+    } catch (error) {
+      logger.error({ error, gameId }, 'Failed to update game with prize in Redis');
+    }
+
+    return { prizeSummary };
+  }
+
+  // Parse Cashu token for display (best effort)
+  private parseCashuToken(token: string): { display: string; amount?: number } {
+    try {
+      // Basic Cashu token parsing - this is best effort
+      if (token.startsWith('cashuA')) {
+        // Try to decode and extract amount
+        const decoded = JSON.parse(atob(token.slice(6)));
+        const proofs = decoded?.token?.[0]?.proofs;
+        if (proofs && Array.isArray(proofs)) {
+          const amount = proofs.reduce((sum: number, proof: any) => sum + (proof.amount || 0), 0);
+          return {
+            display: `${amount} sats`,
+            amount
+          };
+        }
+      }
+      
+      // Fallback for any format
+      return {
+        display: 'Cashu Token Prize',
+        amount: undefined
+      };
+    } catch (error) {
+      logger.debug({ error }, 'Failed to parse Cashu token');
+      return {
+        display: 'Mystery Prize Token',
+        amount: undefined
+      };
+    }
+  }
+
+  // Start pre-start countdown (admin only)
+  async startPrestartCountdown(gameId: string, adminKey: string): Promise<void> {
+    const game = this.games.get(gameId);
+    if (!game) throw new Error('Game not found');
+    if (game.adminKey !== adminKey) throw new Error('Invalid admin key');
+    if (game.status !== 'lobby') throw new Error('Game must be in lobby to start');
+
+    game.status = 'prestart';
+    logger.info({ gameId }, 'Pre-start countdown beginning');
+
+    // Broadcast 10-second countdown
+    let secondsRemaining = 10;
+    const countdownInterval = setInterval(() => {
+      this.broadcast(gameId, {
+        type: 'preStartCountdown',
+        secondsRemaining
+      });
+
+      secondsRemaining--;
+      
+      if (secondsRemaining < 0) {
+        clearInterval(countdownInterval);
+        this.startGame(gameId); // Start the actual game
+      }
+    }, 1000);
+
+    // Initial countdown broadcast
+    this.broadcast(gameId, {
+      type: 'preStartCountdown',
+      secondsRemaining: 10
+    });
+  }
+
+  // Send prize DM via NIP-17 (NIP-44 + NIP-59)
+  private async sendPrizeDM(gameId: string, winnerNpub: string, prizeToken: string): Promise<string | undefined> {
+    if (!config.gameNsec) {
+      logger.warn({ gameId }, 'GAME_NSEC not configured, skipping DM');
+      return undefined;
+    }
+
+    try {
+      // Decode winner npub to pubkey
+      const { data: winnerPubkey } = nip19.decode(winnerNpub);
+      if (typeof winnerPubkey !== 'string') {
+        throw new Error('Invalid npub format');
+      }
+
+      // Normalize game private key
+      let gameSecretKey: Uint8Array;
+      if (config.gameNsec.startsWith('nsec1')) {
+        const { data } = nip19.decode(config.gameNsec);
+        gameSecretKey = data as Uint8Array;
+      } else {
+        // Assume hex format
+        gameSecretKey = new Uint8Array(
+          config.gameNsec.match(/.{2}/g)?.map(byte => parseInt(byte, 16)) || []
+        );
+      }
+
+      if (gameSecretKey.length !== 32) {
+        throw new Error('Invalid GAME_NSEC format');
+      }
+
+      const gamePubkey = getPublicKey(gameSecretKey);
+
+      // Create the kind:14 DM event
+      const dmEvent = {
+        kind: 14,
+        content: prizeToken, // Raw Cashu token
+        tags: [
+          ['p', winnerPubkey]
+        ],
+        created_at: Math.floor(Date.now() / 1000),
+        pubkey: gamePubkey
+      };
+
+      // Seal the DM (kind:13) using NIP-44
+      const sealEvent = await this.sealEvent(dmEvent, winnerPubkey, gameSecretKey);
+      
+      // Gift wrap the sealed event (kind:1059)
+      const giftWrapEvent = await this.giftWrapEvent(sealEvent, winnerPubkey, gameSecretKey);
+
+      // Publish to relays
+      const publishPromises = config.relays.map(relay => 
+        this.pool.publish([relay], giftWrapEvent)
+      );
+
+      const results = await Promise.allSettled(publishPromises);
+      const successCount = results.filter(r => r.status === 'fulfilled').length;
+
+      logger.info({ 
+        gameId, 
+        winnerNpub, 
+        eventId: giftWrapEvent.id,
+        relaysSuccess: successCount,
+        relaysTotal: config.relays.length
+      }, 'Prize DM sent');
+
+      return giftWrapEvent.id;
+
+    } catch (error) {
+      logger.error({ error, gameId, winnerNpub }, 'Failed to send prize DM');
+      throw error;
+    }
+  }
+
+  // Seal event per NIP-59 (kind:13)
+  private async sealEvent(event: any, recipientPubkey: string, senderSecretKey: Uint8Array): Promise<Event> {
+    const sharedSecret = nip44.getConversationKey(senderSecretKey, recipientPubkey);
+    const encryptedContent = nip44.encrypt(JSON.stringify(event), sharedSecret);
+    
+    const sealEvent = {
+      kind: 13,
+      content: encryptedContent,
+      tags: [],
+      created_at: Math.floor(Date.now() / 1000),
+      pubkey: getPublicKey(senderSecretKey)
+    };
+
+    return finalizeEvent(sealEvent, senderSecretKey);
+  }
+
+  // Gift wrap event per NIP-59 (kind:1059)
+  private async giftWrapEvent(sealedEvent: Event, recipientPubkey: string, senderSecretKey: Uint8Array): Promise<Event> {
+    // Generate random key for gift wrapping
+    const randomSecretKey = randomBytes(32);
+    const randomPubkey = getPublicKey(randomSecretKey);
+    
+    const sharedSecret = nip44.getConversationKey(randomSecretKey, recipientPubkey);
+    const encryptedContent = nip44.encrypt(JSON.stringify(sealedEvent), sharedSecret);
+    
+    const giftWrapEvent = {
+      kind: 1059,
+      content: encryptedContent,
+      tags: [
+        ['p', recipientPubkey]
+      ],
+      created_at: Math.floor(Date.now() / 1000),
+      pubkey: randomPubkey
+    };
+
+    return finalizeEvent(giftWrapEvent, randomSecretKey);
   }
 
   // Get Redis debug data

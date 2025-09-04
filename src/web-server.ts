@@ -7,16 +7,33 @@ import { spawn } from 'child_process';
 import { pino } from 'pino';
 import { loadConfig } from './config.js';
 import { Keyring } from './keys/keyring.js';
-import { generateTestURI } from './admin/uri.js';
+import { generateTestURI, generateCustomURI, AppConnectionRequest } from './admin/uri.js';
 import { randomUUID } from 'crypto';
 
 const logger = pino({ name: 'web-server' });
+
+interface AppConnection {
+  appName: string;
+  namespace: string; // Auto-generated, kept for display
+  methods: string[];
+  limits: {
+    mps: number;
+    bps: number;
+    maxkey: number;
+    maxval: number;
+    mget_max: number;
+  };
+  uri: string;
+  clientPubkey: string;
+  created: string;
+}
 
 class WebServer {
   private server: http.Server;
   private config = loadConfig();
   private keyring: Keyring;
   private testURI: string;
+  private appConnections: AppConnection[] = [];
 
   constructor() {
     this.keyring = new Keyring(this.config.nostr.serverNsec);
@@ -25,6 +42,14 @@ class WebServer {
     this.server = http.createServer((req, res) => {
       this.handleRequest(req, res);
     });
+
+    // Log startup info
+    logger.info({
+      serverPubkey: this.keyring.getNpub(),
+      namespace: this.config.redis.namespace,
+      relays: this.config.nostr.relays,
+      limits: this.config.limits
+    }, '🚀 NostrKV Web Server initialized');
   }
 
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -66,14 +91,186 @@ class WebServer {
         });
 
         req.on('end', async () => {
+          const startTime = Date.now();
           try {
             const { method, params } = JSON.parse(body);
-            logger.debug({ method, params }, 'Processing API request');
+            logger.info({ 
+              method, 
+              params: method === 'set' ? { key: params.key, hasValue: !!params.value, ttl: params.ttl } : params,
+              userAgent: req.headers['user-agent'],
+              ip: req.socket.remoteAddress
+            }, '📡 Web API Request');
+            
             const result = await this.executeNostrKVCommand(method, params);
-            logger.debug({ result }, 'API result');
+            const duration = Date.now() - startTime;
+            
+            logger.info({ 
+              method, 
+              success: !result.error,
+              duration,
+              resultType: typeof result
+            }, '✅ Web API Response');
+            
             res.end(JSON.stringify({ result, error: null }));
           } catch (error: any) {
-            logger.error({ error: error.message, stack: error.stack }, 'API error');
+            const duration = Date.now() - startTime;
+            logger.error({ 
+              error: error.message, 
+              stack: error.stack,
+              duration,
+              ip: req.socket.remoteAddress
+            }, '❌ Web API Error');
+            res.end(JSON.stringify({ 
+              result: null, 
+              error: { code: 'INTERNAL', message: error.message } 
+            }));
+          }
+        });
+        return;
+      }
+
+      // API endpoint to create new app connection
+      if (url.pathname === '/api/create-app-connection' && req.method === 'POST') {
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type'
+        });
+
+        let body = '';
+        req.on('data', chunk => {
+          body += chunk.toString();
+        });
+
+        req.on('end', async () => {
+          try {
+            const appConfig: AppConnectionRequest = JSON.parse(body);
+            logger.debug({ appConfig }, 'Creating new app connection');
+            
+            // Validate input
+            if (!appConfig.appName || !appConfig.methods || !appConfig.limits) {
+              res.end(JSON.stringify({ 
+                result: null, 
+                error: { code: 'INVALID_REQUEST', message: 'Missing required fields' } 
+              }));
+              return;
+            }
+
+            // Check if app name already exists
+            const existingApp = this.appConnections.find(app => app.appName === appConfig.appName);
+            if (existingApp) {
+              res.end(JSON.stringify({ 
+                result: null, 
+                error: { code: 'APP_EXISTS', message: 'App name already exists' } 
+              }));
+              return;
+            }
+
+            // Generate custom URI with auto-generated namespace
+            const { uri, clientKeyring, namespace } = generateCustomURI(this.config, this.keyring, appConfig);
+            
+            // Create app connection record with auto-generated namespace
+            const connection: AppConnection = {
+              appName: appConfig.appName,
+              namespace: namespace, // Auto-generated secure namespace
+              methods: appConfig.methods,
+              limits: appConfig.limits,
+              uri,
+              clientPubkey: clientKeyring.getNpub(),
+              created: new Date().toISOString()
+            };
+
+            // Store connection
+            this.appConnections.push(connection);
+            
+            // Also save to shared registry for main server
+            await this.saveConnectionRegistry(clientKeyring.getPublicKey(), appConfig, namespace);
+            
+            logger.info({ 
+              appName: appConfig.appName, 
+              namespace: namespace, // Auto-generated secure namespace
+              clientPubkey: clientKeyring.getNpub(),
+              clientNsec: clientKeyring.getNsec(),
+              clientHex: clientKeyring.getPublicKey(),
+              methods: appConfig.methods,
+              limits: appConfig.limits,
+              totalConnections: this.appConnections.length
+            }, '🔗 Created new app connection with custom client keys');
+
+            res.end(JSON.stringify({ 
+              connection,
+              error: null 
+            }));
+          } catch (error: any) {
+            logger.error({ error: error.message, stack: error.stack }, 'Error creating app connection');
+            res.end(JSON.stringify({ 
+              result: null, 
+              error: { code: 'INTERNAL', message: error.message } 
+            }));
+          }
+        });
+        return;
+      }
+
+      // API endpoint to get all app connections
+      if (url.pathname === '/api/app-connections' && req.method === 'GET') {
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type'
+        });
+
+        logger.info({ 
+          totalConnections: this.appConnections.length,
+          appNames: this.appConnections.map(c => c.appName),
+          ip: req.socket.remoteAddress 
+        }, '📋 Listing app connections');
+
+        res.end(JSON.stringify({ 
+          connections: this.appConnections,
+          error: null 
+        }));
+        return;
+      }
+
+      // API endpoint to delete an app connection
+      if (url.pathname === '/api/delete-app-connection' && req.method === 'POST') {
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type'
+        });
+
+        let body = '';
+        req.on('data', chunk => {
+          body += chunk.toString();
+        });
+
+        req.on('end', async () => {
+          try {
+            const { appName } = JSON.parse(body);
+            const index = this.appConnections.findIndex(app => app.appName === appName);
+            
+            if (index === -1) {
+              res.end(JSON.stringify({ 
+                result: null, 
+                error: { code: 'APP_NOT_FOUND', message: 'App connection not found' } 
+              }));
+              return;
+            }
+
+            this.appConnections.splice(index, 1);
+            logger.info({ appName }, 'Deleted app connection');
+
+            res.end(JSON.stringify({ 
+              result: { deleted: true },
+              error: null 
+            }));
+          } catch (error: any) {
+            logger.error({ error: error.message, stack: error.stack }, 'Error deleting app connection');
             res.end(JSON.stringify({ 
               result: null, 
               error: { code: 'INTERNAL', message: error.message } 
@@ -106,6 +303,19 @@ class WebServer {
       }
       if (filePath === '/real') {
         filePath = '/real-nostr-client.html';  // Real Nostr client (incomplete)
+      }
+      if (filePath === '/client') {
+        // Serve the real NostrKV client
+        const realClientPath = '/Users/mini/code/Reddisconnect/docs/real-client.html';
+        if (fs.existsSync(realClientPath)) {
+          const content = fs.readFileSync(realClientPath);
+          res.writeHead(200, { 
+            'Content-Type': 'text/html',
+            'Cache-Control': 'no-cache'
+          });
+          res.end(content);
+          return;
+        }
       }
 
       // Security: prevent directory traversal
@@ -278,6 +488,35 @@ class WebServer {
       }
     } catch (error: any) {
       throw new Error(`Redis operation failed: ${error.message}`);
+    }
+  }
+
+  private async saveConnectionRegistry(clientPubkey: string, appConfig: AppConnectionRequest, namespace: string): Promise<void> {
+    try {
+      const registryPath = path.join(process.cwd(), '.nostrkv-connections.json');
+      
+      // Read existing registry
+      let registry: Record<string, any> = {};
+      if (fs.existsSync(registryPath)) {
+        const content = fs.readFileSync(registryPath, 'utf8');
+        registry = JSON.parse(content);
+      }
+      
+      // Add new connection with auto-generated namespace
+      registry[clientPubkey] = {
+        namespace: namespace, // Auto-generated secure namespace
+        allowedMethods: appConfig.methods,
+        limits: appConfig.limits,
+        appName: appConfig.appName,
+        created: new Date().toISOString()
+      };
+      
+      // Write updated registry
+      fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2));
+      logger.info({ clientPubkey: clientPubkey.substring(0, 8), namespace: namespace }, 'Saved client connection to registry');
+      
+    } catch (error) {
+      logger.error({ error }, 'Failed to save connection registry');
     }
   }
 

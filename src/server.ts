@@ -12,6 +12,8 @@ import { KVAdapter } from './redis/kv.js';
 import { AuditLogger } from './audit/audit.js';
 import { ClientConnection, KVRequest, KVResponse } from './types.js';
 import { generateTestURI, displayConnectionInfo } from './admin/uri.js';
+import fs from 'fs';
+import path from 'path';
 
 const logger = pino({ 
   name: 'nostrkv-server',
@@ -52,8 +54,7 @@ class NostrKVServer {
     this.router = new ProtocolRouter(
       this.kvAdapter,
       this.auditLogger,
-      this.dmCrypto,
-      this.config.redis.namespace
+      this.dmCrypto
     );
 
     // Setup signal handlers
@@ -100,6 +101,18 @@ class NostrKVServer {
   private async handleIncomingEvent(event: Event): Promise<void> {
     const startTime = Date.now();
     
+    // Log every incoming Nostr event
+    logger.info({
+      eventId: event.id,
+      eventKind: event.kind,
+      clientPubkey: event.pubkey,
+      clientShort: event.pubkey.substring(0, 8),
+      createdAt: new Date(event.created_at * 1000).toISOString(),
+      contentLength: event.content.length,
+      tagsCount: event.tags?.length || 0,
+      hasSignature: !!event.sig
+    }, '📨 Received Nostr event');
+    
     try {
       // Verify event signature
       if (!event.sig) {
@@ -115,8 +128,13 @@ class NostrKVServer {
           this.keyring.getSecretKey(),
           event.pubkey
         );
+        logger.debug({
+          eventId: event.id,
+          encryptionMethod: decrypted.method,
+          decryptedLength: decrypted.decrypted.length
+        }, '🔓 Successfully decrypted event content');
       } catch (error) {
-        logger.error({ error, eventId: event.id }, 'Failed to decrypt event');
+        logger.error({ error, eventId: event.id, clientShort: event.pubkey.substring(0, 8) }, '❌ Failed to decrypt event');
         return;
       }
 
@@ -124,8 +142,19 @@ class NostrKVServer {
       let request: KVRequest;
       try {
         request = JSON.parse(decrypted.decrypted);
+        logger.info({
+          eventId: event.id,
+          method: request.method,
+          requestId: request.id,
+          hasParams: !!request.params,
+          paramKeys: request.params ? Object.keys(request.params) : []
+        }, '📋 Parsed NostrKV request');
       } catch (error) {
-        logger.error({ error, eventId: event.id }, 'Invalid JSON in decrypted content');
+        logger.error({ 
+          error, 
+          eventId: event.id, 
+          decryptedContent: decrypted.decrypted.substring(0, 100) + '...' 
+        }, '❌ Invalid JSON in decrypted content');
         return;
       }
 
@@ -139,8 +168,29 @@ class NostrKVServer {
       // Get or create client connection
       let connection = this.connections.get(event.pubkey);
       if (!connection) {
-        // Create default connection for new clients
-        connection = this.createDefaultConnection(event.pubkey);
+        // Try to load from connection registry first
+        connection = this.loadConnectionFromRegistry(event.pubkey);
+        if (!connection) {
+          // Create default connection for new clients
+          connection = this.createDefaultConnection(event.pubkey);
+          logger.info({
+            clientPubkey: event.pubkey,
+            clientShort: event.pubkey.substring(0, 8),
+            namespace: connection.namespace,
+            allowedMethods: connection.allowedMethods,
+            source: 'default',
+            totalConnections: this.connections.size + 1
+          }, '🔑 New client connected with default settings');
+        } else {
+          logger.info({
+            clientPubkey: event.pubkey,
+            clientShort: event.pubkey.substring(0, 8),
+            namespace: connection.namespace,
+            allowedMethods: connection.allowedMethods,
+            source: 'registry',
+            totalConnections: this.connections.size + 1
+          }, '🔑 New client connected with connection string');
+        }
         this.connections.set(event.pubkey, connection);
       }
 
@@ -163,6 +213,33 @@ class NostrKVServer {
     }
   }
 
+  private loadConnectionFromRegistry(pubkey: string): ClientConnection | undefined {
+    try {
+      const registryPath = path.join(process.cwd(), '.nostrkv-connections.json');
+      if (!fs.existsSync(registryPath)) {
+        return undefined;
+      }
+      
+      const content = fs.readFileSync(registryPath, 'utf8');
+      const registry = JSON.parse(content);
+      const registryEntry = registry[pubkey];
+      
+      if (!registryEntry) {
+        return undefined;
+      }
+      
+      return {
+        pubkey,
+        namespace: registryEntry.namespace,
+        allowedMethods: registryEntry.allowedMethods,
+        limits: registryEntry.limits
+      };
+    } catch (error) {
+      logger.error({ error, pubkey: pubkey.substring(0, 8) }, 'Failed to load connection from registry');
+      return undefined;
+    }
+  }
+
   private createDefaultConnection(pubkey: string): ClientConnection {
     return {
       pubkey,
@@ -180,6 +257,16 @@ class NostrKVServer {
 
   private async sendResponse(response: KVResponse, recipientPubkey: string): Promise<void> {
     try {
+      // Log outgoing response details
+      logger.info({
+        responseId: response.id,
+        recipientShort: recipientPubkey.substring(0, 8),
+        hasResult: response.result !== null,
+        hasError: response.error !== null,
+        errorCode: response.error?.code,
+        resultType: typeof response.result
+      }, '📤 Sending NostrKV response');
+
       // Encrypt the response
       const responseJson = JSON.stringify(response);
       const { encrypted } = await this.dmCrypto.encrypt(
@@ -203,13 +290,19 @@ class NostrKVServer {
       // Publish to relays
       await this.relayPool.publish(signedEvent);
 
-      logger.debug({ 
+      logger.info({ 
         responseId: response.id,
-        recipientPubkey: recipientPubkey.substring(0, 8)
-      }, 'Response sent');
+        eventId: signedEvent.id,
+        recipientShort: recipientPubkey.substring(0, 8),
+        encryptedLength: encrypted.length
+      }, '✅ Response published to relays');
 
     } catch (error) {
-      logger.error({ error, responseId: response.id }, 'Failed to send response');
+      logger.error({ 
+        error, 
+        responseId: response.id,
+        recipientShort: recipientPubkey.substring(0, 8)
+      }, '❌ Failed to send response');
     }
   }
 

@@ -15,28 +15,41 @@ const logger = pino({ name: 'protocol-router' });
 
 export class ProtocolRouter {
   private idempotencyCache: IdempotencyCache;
-  private namespaceManager: NamespaceManager;
   private rateLimiter: RateLimiter;
   private budgetManager: BudgetManager;
   private validator: Validator;
   private kvAdapter: KVAdapter;
   private auditLogger: AuditLogger;
   private dmCrypto: DMCrypto;
+  private namespaceManagers: Map<string, NamespaceManager> = new Map();
 
   constructor(
     kvAdapter: KVAdapter,
     auditLogger: AuditLogger,
-    dmCrypto: DMCrypto,
-    namespace: string
+    dmCrypto: DMCrypto
   ) {
     this.idempotencyCache = new IdempotencyCache();
-    this.namespaceManager = new NamespaceManager(namespace);
     this.rateLimiter = new RateLimiter();
     this.budgetManager = new BudgetManager();
     this.validator = new Validator();
     this.kvAdapter = kvAdapter;
     this.auditLogger = auditLogger;
     this.dmCrypto = dmCrypto;
+  }
+
+  /**
+   * Get or create a namespace manager for this connection
+   * This ensures each connection has strict namespace isolation
+   */
+  private getNamespaceManager(connection: ClientConnection): NamespaceManager {
+    const namespace = connection.namespace;
+    
+    if (!this.namespaceManagers.has(namespace)) {
+      logger.info({ namespace, clientPubkey: connection.pubkey.substring(0, 8) }, 'Creating new namespace manager for connection');
+      this.namespaceManagers.set(namespace, new NamespaceManager(namespace));
+    }
+    
+    return this.namespaceManagers.get(namespace)!;
   }
 
   async handleRequest(
@@ -46,6 +59,9 @@ export class ProtocolRouter {
     const startTime = Date.now();
     
     try {
+      // Get the namespace manager for this specific connection
+      const namespaceManager = this.getNamespaceManager(connection);
+      
       // Validate base request structure
       const validatedRequest = baseRequestSchema.parse(request);
       
@@ -83,7 +99,7 @@ export class ProtocolRouter {
         );
       }
 
-      // Route to method handler
+      // Route to method handler with connection-specific namespace manager
       let response: KVResponse;
       
       switch (validatedRequest.method) {
@@ -91,25 +107,25 @@ export class ProtocolRouter {
           response = await this.handleGetInfo(validatedRequest, connection);
           break;
         case 'get':
-          response = await this.handleGet(validatedRequest, connection);
+          response = await this.handleGet(validatedRequest, connection, namespaceManager);
           break;
         case 'set':
-          response = await this.handleSet(validatedRequest, connection);
+          response = await this.handleSet(validatedRequest, connection, namespaceManager);
           break;
         case 'del':
-          response = await this.handleDel(validatedRequest, connection);
+          response = await this.handleDel(validatedRequest, connection, namespaceManager);
           break;
         case 'exists':
-          response = await this.handleExists(validatedRequest, connection);
+          response = await this.handleExists(validatedRequest, connection, namespaceManager);
           break;
         case 'mget':
-          response = await this.handleMget(validatedRequest, connection);
+          response = await this.handleMget(validatedRequest, connection, namespaceManager);
           break;
         case 'expire':
-          response = await this.handleExpire(validatedRequest, connection);
+          response = await this.handleExpire(validatedRequest, connection, namespaceManager);
           break;
         case 'ttl':
-          response = await this.handleTtl(validatedRequest, connection);
+          response = await this.handleTtl(validatedRequest, connection, namespaceManager);
           break;
         default:
           response = this.errorResponse(
@@ -169,7 +185,7 @@ export class ProtocolRouter {
     };
   }
 
-  private async handleGet(request: KVRequest, connection: ClientConnection): Promise<KVResponse> {
+  private async handleGet(request: KVRequest, connection: ClientConnection, namespaceManager: NamespaceManager): Promise<KVResponse> {
     try {
       const params = methodSchemas.get.params.parse(request.params);
       
@@ -178,8 +194,8 @@ export class ProtocolRouter {
         return this.errorResponse(request.id, ErrorCodes.INVALID_KEY, 'Key too long or invalid');
       }
 
-      // Ensure namespace
-      const fullKey = this.namespaceManager.ensureNamespace(params.key);
+      // Ensure namespace using connection-specific namespace manager
+      const fullKey = namespaceManager.ensureNamespace(params.key);
       if (!fullKey) {
         return this.errorResponse(request.id, ErrorCodes.RESTRICTED, 'Key outside namespace');
       }
@@ -197,7 +213,7 @@ export class ProtocolRouter {
     }
   }
 
-  private async handleSet(request: KVRequest, connection: ClientConnection): Promise<KVResponse> {
+  private async handleSet(request: KVRequest, connection: ClientConnection, namespaceManager: NamespaceManager): Promise<KVResponse> {
     try {
       const params = methodSchemas.set.params.parse(request.params);
       
@@ -210,8 +226,8 @@ export class ProtocolRouter {
         return this.errorResponse(request.id, ErrorCodes.INVALID_VALUE, 'Value too large');
       }
 
-      // Ensure namespace
-      const fullKey = this.namespaceManager.ensureNamespace(params.key);
+      // Ensure namespace using connection-specific namespace manager
+      const fullKey = namespaceManager.ensureNamespace(params.key);
       if (!fullKey) {
         return this.errorResponse(request.id, ErrorCodes.RESTRICTED, 'Key outside namespace');
       }
@@ -229,7 +245,7 @@ export class ProtocolRouter {
     }
   }
 
-  private async handleDel(request: KVRequest, connection: ClientConnection): Promise<KVResponse> {
+  private async handleDel(request: KVRequest, connection: ClientConnection, namespaceManager: NamespaceManager): Promise<KVResponse> {
     try {
       const params = methodSchemas.del.params.parse(request.params);
       
@@ -237,7 +253,7 @@ export class ProtocolRouter {
         return this.errorResponse(request.id, ErrorCodes.INVALID_KEY, 'Key too long or invalid');
       }
 
-      const fullKey = this.namespaceManager.ensureNamespace(params.key);
+      const fullKey = namespaceManager.ensureNamespace(params.key);
       if (!fullKey) {
         return this.errorResponse(request.id, ErrorCodes.RESTRICTED, 'Key outside namespace');
       }
@@ -255,7 +271,7 @@ export class ProtocolRouter {
     }
   }
 
-  private async handleExists(request: KVRequest, connection: ClientConnection): Promise<KVResponse> {
+  private async handleExists(request: KVRequest, connection: ClientConnection, namespaceManager: NamespaceManager): Promise<KVResponse> {
     try {
       const params = methodSchemas.exists.params.parse(request.params);
       
@@ -263,7 +279,7 @@ export class ProtocolRouter {
         return this.errorResponse(request.id, ErrorCodes.INVALID_KEY, 'Key too long or invalid');
       }
 
-      const fullKey = this.namespaceManager.ensureNamespace(params.key);
+      const fullKey = namespaceManager.ensureNamespace(params.key);
       if (!fullKey) {
         return this.errorResponse(request.id, ErrorCodes.RESTRICTED, 'Key outside namespace');
       }
@@ -281,7 +297,7 @@ export class ProtocolRouter {
     }
   }
 
-  private async handleMget(request: KVRequest, connection: ClientConnection): Promise<KVResponse> {
+  private async handleMget(request: KVRequest, connection: ClientConnection, namespaceManager: NamespaceManager): Promise<KVResponse> {
     try {
       const params = methodSchemas.mget.params.parse(request.params);
       
@@ -290,14 +306,14 @@ export class ProtocolRouter {
         return this.errorResponse(request.id, ErrorCodes.PAYLOAD_TOO_LARGE, 'Too many keys in mget');
       }
 
-      // Validate and namespace all keys
+      // Validate and namespace all keys using connection-specific namespace manager
       const fullKeys: string[] = [];
       for (const key of params.keys) {
         if (!this.validator.validateKey(key, connection.limits.maxKey)) {
           return this.errorResponse(request.id, ErrorCodes.INVALID_KEY, `Key too long: ${key}`);
         }
         
-        const fullKey = this.namespaceManager.ensureNamespace(key);
+        const fullKey = namespaceManager.ensureNamespace(key);
         if (!fullKey) {
           return this.errorResponse(request.id, ErrorCodes.RESTRICTED, `Key outside namespace: ${key}`);
         }
@@ -318,7 +334,7 @@ export class ProtocolRouter {
     }
   }
 
-  private async handleExpire(request: KVRequest, connection: ClientConnection): Promise<KVResponse> {
+  private async handleExpire(request: KVRequest, connection: ClientConnection, namespaceManager: NamespaceManager): Promise<KVResponse> {
     try {
       const params = methodSchemas.expire.params.parse(request.params);
       
@@ -326,7 +342,7 @@ export class ProtocolRouter {
         return this.errorResponse(request.id, ErrorCodes.INVALID_KEY, 'Key too long or invalid');
       }
 
-      const fullKey = this.namespaceManager.ensureNamespace(params.key);
+      const fullKey = namespaceManager.ensureNamespace(params.key);
       if (!fullKey) {
         return this.errorResponse(request.id, ErrorCodes.RESTRICTED, 'Key outside namespace');
       }
@@ -344,7 +360,7 @@ export class ProtocolRouter {
     }
   }
 
-  private async handleTtl(request: KVRequest, connection: ClientConnection): Promise<KVResponse> {
+  private async handleTtl(request: KVRequest, connection: ClientConnection, namespaceManager: NamespaceManager): Promise<KVResponse> {
     try {
       const params = methodSchemas.ttl.params.parse(request.params);
       
@@ -352,7 +368,7 @@ export class ProtocolRouter {
         return this.errorResponse(request.id, ErrorCodes.INVALID_KEY, 'Key too long or invalid');
       }
 
-      const fullKey = this.namespaceManager.ensureNamespace(params.key);
+      const fullKey = namespaceManager.ensureNamespace(params.key);
       if (!fullKey) {
         return this.errorResponse(request.id, ErrorCodes.RESTRICTED, 'Key outside namespace');
       }

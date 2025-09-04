@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NostrKV Betting Game</title>
     <link rel="stylesheet" href="/demo/bettingGame/styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
     <div id="app">
@@ -43,11 +44,41 @@
                     <span id="players-count">0</span> players joined
                 </div>
 
+                <!-- Admin Controls -->
+                <div id="admin-controls" class="admin-panel hidden">
+                    <h3>🔑 Game Runner Controls</h3>
+                    <div class="admin-section">
+                        <h4>Set Prize</h4>
+                        <input type="text" 
+                               id="prize-token-input" 
+                               placeholder="Paste Cashu token here..." 
+                               class="admin-input">
+                        <button id="set-prize-btn" class="btn btn-small">Set Prize</button>
+                        <div id="prize-display" class="prize-display hidden"></div>
+                        <div id="prize-error" class="error-message hidden"></div>
+                    </div>
+                    <div class="admin-section">
+                        <h4>Start Game</h4>
+                        <button id="start-game-btn" class="btn btn-primary" disabled>Start Game (10s countdown)</button>
+                        <div id="start-error" class="error-message hidden"></div>
+                    </div>
+                </div>
+
+                <div class="admin-toggle">
+                    <button id="show-admin-btn" class="btn btn-small">Show Admin Controls</button>
+                </div>
+
                 <div class="share-link">
                     <p>Share this link:</p>
                     <div class="link-display">
                         <input type="text" id="share-link" readonly>
                         <button id="copy-link-btn" class="btn btn-small">Copy</button>
+                    </div>
+                    <div class="qr-code-section">
+                        <p>Or scan this QR code:</p>
+                        <div id="qr-code-container">
+                            <div id="qr-code"></div>
+                        </div>
                     </div>
                 </div>
             </div>

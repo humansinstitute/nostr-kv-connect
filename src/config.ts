@@ -10,7 +10,7 @@ export function loadConfig(): Config {
       namespace: process.env.REDIS_NAMESPACE || 'default:'
     },
     nostr: {
-      relays: (process.env.RELAYS || 'wss://relay.damus.io').split(','),
+      relays: (process.env.RELAYS || 'wss://relay.damus.io,wss://relay.nostr.band,wss://nostr.mineracks.com').split(','),
       serverNsec: process.env.SERVER_NSEC || '',
       encryptionPref: (process.env.ENCRYPTION_PREF || 'nip44') as 'nip44' | 'nip04'
     },

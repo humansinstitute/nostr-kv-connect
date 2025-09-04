@@ -1,0 +1,90 @@
+{
+  "b4a4507c17eb53c403de126d9b0850b33823a17a02dd8dc736ea3a1fc74d06aa": {
+    "namespace": "a1:",
+    "allowedMethods": [
+      "get_info",
+      "get",
+      "set",
+      "del",
+      "exists",
+      "mget",
+      "expire",
+      "ttl"
+    ],
+    "limits": {
+      "mps": 60,
+      "bps": 1048576,
+      "maxkey": 256,
+      "maxval": 65536,
+      "mget_max": 16
+    },
+    "appName": "a1",
+    "created": "2025-09-04T12:30:25.174Z"
+  },
+  "d80c2809060748e2182c5c50d00115ae88be338c5234a0d633bb122530c3a2bd": {
+    "namespace": "newkeys:",
+    "allowedMethods": [
+      "get_info",
+      "get",
+      "set",
+      "del",
+      "exists",
+      "mget",
+      "expire",
+      "ttl"
+    ],
+    "limits": {
+      "mps": 60,
+      "bps": 1048576,
+      "maxkey": 256,
+      "maxval": 65536,
+      "mget_max": 16
+    },
+    "appName": "newkeys",
+    "created": "2025-09-04T13:05:33.682Z"
+  },
+  "10ac28a01b948db6c6af86686eb81314a4feee6a2f36f572baed26a883f5de37": {
+    "namespace": "newapp_1649faf24df705e6:",
+    "allowedMethods": [
+      "get_info",
+      "get",
+      "set",
+      "del",
+      "exists",
+      "mget",
+      "expire",
+      "ttl"
+    ],
+    "limits": {
+      "mps": 60,
+      "bps": 1048576,
+      "maxkey": 256,
+      "maxval": 65536,
+      "mget_max": 16
+    },
+    "appName": "NewAPP",
+    "created": "2025-09-04T13:40:01.919Z"
+  },
+  "f012f043b79406520092fab1780bb8559269c3fb39a80823e65f7b9cf356249b": {
+    "namespace": "newapp2_758eb4541be3dab4:",
+    "allowedMethods": [
+      "get_info",
+      "get",
+      "set",
+      "del",
+      "exists",
+      "mget",
+      "expire",
+      "ttl"
+    ],
+    "limits": {
+      "mps": 60,
+      "bps": 1048576,
+      "maxkey": 256,
+      "maxval": 65536,
+      "mget_max": 16
+    },
+    "appName": "newAPP2",
+    "created": "2025-09-04T13:43:20.471Z"
+  }
+}

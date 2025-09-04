@@ -2,6 +2,8 @@
 
 A NIP-47-style protocol and service that grants scoped, revocable, per-connection access to a remote Redis key-value store via encrypted Nostr DMs.
 
+**NOTE - Experimentation whilst specifying correctly - on't use yet!**
+
 ## Overview
 
 NostrKV Connect adapts the NIP-47 (Nostr Wallet Connect) request/response pattern to provide secure, namespaced access to Redis. Applications can read/write to owner-exposed Redis keys over Nostr without direct network access.

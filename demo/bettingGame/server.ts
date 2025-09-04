@@ -53,9 +53,9 @@ export class BettingGameHttpServer {
     try {
       // API Routes
       if (url.pathname === '/demo/bettingGame/api/new-game' && req.method === 'POST') {
-        const gameId = await this.gameServer.createGame();
+        const result = await this.gameServer.createGame();
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ gameId }));
+        res.end(JSON.stringify(result)); // Returns { gameId, adminKey }
         return;
       }
 
@@ -102,6 +102,46 @@ export class BettingGameHttpServer {
             res.end(JSON.stringify({ success }));
           } catch (error: any) {
             logger.error({ error: error.message }, 'Bet processing error');
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: error.message }));
+          }
+        });
+        return;
+      }
+
+      // Prize setting endpoint
+      if (url.pathname.match(/^\/demo\/bettingGame\/api\/game\/[^\/]+\/set-prize$/) && req.method === 'POST') {
+        const gameId = url.pathname.split('/')[5]; // Extract gameId from path
+        let body = '';
+        req.on('data', chunk => body += chunk.toString());
+        req.on('end', async () => {
+          try {
+            const { token, adminKey } = JSON.parse(body);
+            const result = await this.gameServer.setPrize(gameId, token, adminKey);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, ...result }));
+          } catch (error: any) {
+            logger.error({ error: error.message, gameId }, 'Set prize error');
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: error.message }));
+          }
+        });
+        return;
+      }
+
+      // Start game endpoint
+      if (url.pathname.match(/^\/demo\/bettingGame\/api\/game\/[^\/]+\/start$/) && req.method === 'POST') {
+        const gameId = url.pathname.split('/')[5]; // Extract gameId from path
+        let body = '';
+        req.on('data', chunk => body += chunk.toString());
+        req.on('end', async () => {
+          try {
+            const { adminKey } = JSON.parse(body);
+            await this.gameServer.startPrestartCountdown(gameId, adminKey);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, countdownSeconds: 10 }));
+          } catch (error: any) {
+            logger.error({ error: error.message, gameId }, 'Start game error');
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: error.message }));
           }

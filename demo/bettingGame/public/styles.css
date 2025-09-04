@@ -209,6 +209,33 @@ h3 {
     color: white;
 }
 
+.qr-code-section {
+    margin-top: 20px;
+    text-align: center;
+}
+
+.qr-code-section p {
+    margin-bottom: 15px;
+    opacity: 0.9;
+}
+
+#qr-code-container {
+    background: white;
+    border-radius: 10px;
+    padding: 15px;
+    display: inline-block;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+#qr-code {
+    display: block;
+}
+
+#qr-code img {
+    display: block;
+    border-radius: 5px;
+}
+
 /* Game Screen */
 .game-header {
     text-align: center;
@@ -547,6 +574,104 @@ h3 {
     100% { background: rgba(81, 207, 102, 0.3); }
 }
 
+/* Admin Controls */
+.admin-panel {
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 15px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.admin-panel h3 {
+    color: #ffd93d;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.admin-section {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+}
+
+.admin-section:last-child {
+    margin-bottom: 0;
+}
+
+.admin-section h4 {
+    font-size: 1rem;
+    margin: 0 0 10px 0;
+    color: #fff;
+}
+
+.admin-input {
+    width: 100%;
+    padding: 10px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+    font-family: 'Courier New', monospace;
+}
+
+.admin-input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.admin-input:focus {
+    outline: none;
+    border-color: #ffd93d;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.admin-toggle {
+    text-align: center;
+    margin: 20px 0;
+}
+
+.prize-display {
+    margin-top: 10px;
+    padding: 10px;
+    background: rgba(81, 207, 102, 0.2);
+    border-radius: 5px;
+    color: #51cf66;
+    font-weight: 600;
+}
+
+.admin-section .btn {
+    width: 100%;
+}
+
+.admin-section .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Pre-start countdown display */
+.prestart-countdown {
+    text-align: center;
+    margin: 20px 0;
+    padding: 20px;
+    background: rgba(255, 193, 61, 0.2);
+    border-radius: 15px;
+    border: 2px solid #ffd93d;
+}
+
+.prestart-countdown h3 {
+    color: #ffd93d;
+    margin-bottom: 10px;
+}
+
+.prestart-timer {
+    font-size: 3rem;
+    font-weight: bold;
+    color: #ffd93d;
+}
+
 /* Responsive */
 @media (max-width: 600px) {
     .container {
@@ -576,5 +701,13 @@ h3 {
 
     .debug-panel {
         font-size: 0.9rem;
+    }
+
+    .admin-panel {
+        padding: 15px;
+    }
+
+    .prestart-timer {
+        font-size: 2rem;
     }
 }

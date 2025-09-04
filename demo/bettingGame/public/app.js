@@ -9,6 +9,8 @@ class BettingGame {
         this.countdownInterval = null;
         this.debugMessages = [];
         this.redisKeys = new Set();
+        this.adminKey = null; // Store admin key
+        this.isAdmin = false;
         
         this.screens = {
             home: document.getElementById('home-screen'),
@@ -117,6 +119,11 @@ class BettingGame {
             
             const data = await response.json();
             this.gameId = data.gameId;
+            this.adminKey = data.adminKey; // Store admin key
+            this.isAdmin = true;
+            
+            // Save admin key in localStorage for this game
+            localStorage.setItem(`adminKey:${this.gameId}`, this.adminKey);
             
             // Navigate to game page
             window.history.pushState({}, '', `/demo/bettingGame/${this.gameId}`);
@@ -129,6 +136,13 @@ class BettingGame {
     
     async loadGame() {
         try {
+            // Check if we have admin key for this game
+            const storedAdminKey = localStorage.getItem(`adminKey:${this.gameId}`);
+            if (storedAdminKey) {
+                this.adminKey = storedAdminKey;
+                this.isAdmin = true;
+            }
+            
             // Fetch game state
             const response = await fetch(`/demo/bettingGame/api/game/${this.gameId}`);
             if (!response.ok) {
@@ -141,7 +155,7 @@ class BettingGame {
             this.connectWebSocket();
             
             // Show appropriate screen based on game status
-            if (this.gameState.status === 'lobby') {
+            if (this.gameState.status === 'lobby' || this.gameState.status === 'prestart') {
                 this.showLobbyScreen();
             } else if (this.gameState.status === 'active') {
                 if (this.npub) {
@@ -235,6 +249,25 @@ class BettingGame {
                 }
                 break;
                 
+            case 'prizeUpdated':
+                this.gameState.prizeSummary = message.prizeSummary;
+                this.updatePrizeDisplay();
+                break;
+                
+            case 'preStartCountdown':
+                this.gameState.status = 'prestart';
+                this.updatePreStartCountdown(message.secondsRemaining);
+                break;
+                
+            case 'prizeSent':
+                console.log('Prize sent to winner:', message.recipientNpub, 'Event ID:', message.eventId);
+                this.addDebugMessage('incoming', 'Prize', { 
+                    sent: true, 
+                    eventId: message.eventId,
+                    recipient: message.recipientNpub
+                });
+                break;
+                
             case 'error':
                 this.handleError(message.message);
                 break;
@@ -255,6 +288,11 @@ class BettingGame {
             alert('Link copied to clipboard!');
         });
         
+        // Generate QR code (with a small delay to ensure library is loaded)
+        setTimeout(() => {
+            this.generateQRCode(currentUrl);
+        }, 100);
+        
         // Setup registration
         const registerBtn = document.getElementById('register-btn');
         const npubInput = document.getElementById('npub-input');
@@ -272,11 +310,24 @@ class BettingGame {
             }
         });
         
+        // Setup admin controls
+        this.setupAdminControls();
+        
         // Update players count
         this.updatePlayersCount();
         
-        // Start countdown
-        this.startLobbyCountdown();
+        // Start countdown (or show prestart countdown if in prestart)
+        if (this.gameState?.status === 'prestart') {
+            this.showPreStartCountdown();
+        } else if (this.gameState?.startAt && this.gameState.startAt > 0) {
+            this.startLobbyCountdown();
+        } else {
+            // Manual start - hide countdown display
+            const countdownDisplay = document.querySelector('.countdown-display');
+            if (countdownDisplay) {
+                countdownDisplay.style.display = 'none';
+            }
+        }
     }
     
     async register() {
@@ -712,6 +763,209 @@ class BettingGame {
             npub: this.npub,
             wsConnected: this.ws?.readyState === WebSocket.OPEN
         }, null, 2);
+    }
+    
+    setupAdminControls() {
+        const adminControls = document.getElementById('admin-controls');
+        const showAdminBtn = document.getElementById('show-admin-btn');
+        
+        if (this.isAdmin) {
+            showAdminBtn.textContent = '🔑 Admin Controls';
+            
+            // Show/hide admin controls
+            showAdminBtn.addEventListener('click', () => {
+                adminControls.classList.toggle('hidden');
+                if (!adminControls.classList.contains('hidden')) {
+                    showAdminBtn.textContent = 'Hide Admin Controls';
+                } else {
+                    showAdminBtn.textContent = '🔑 Admin Controls';
+                }
+            });
+            
+            // Setup prize controls
+            const setPrizeBtn = document.getElementById('set-prize-btn');
+            const prizeTokenInput = document.getElementById('prize-token-input');
+            
+            setPrizeBtn.addEventListener('click', () => this.setPrize());
+            prizeTokenInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    this.setPrize();
+                }
+            });
+            
+            // Setup start game controls
+            const startGameBtn = document.getElementById('start-game-btn');
+            startGameBtn.addEventListener('click', () => this.startGame());
+            
+            // Enable start button if we have prize or allow without prize
+            this.updateStartGameButton();
+            
+            // Update prize display if already set
+            this.updatePrizeDisplay();
+        } else {
+            // Hide admin toggle for non-admins
+            showAdminBtn.style.display = 'none';
+        }
+    }
+    
+    async setPrize() {
+        const prizeTokenInput = document.getElementById('prize-token-input');
+        const prizeError = document.getElementById('prize-error');
+        const prizeDisplay = document.getElementById('prize-display');
+        
+        const token = prizeTokenInput.value.trim();
+        if (!token) {
+            this.showPrizeError('Please enter a prize token');
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/demo/bettingGame/api/game/${this.gameId}/set-prize`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token, adminKey: this.adminKey })
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to set prize');
+            }
+            
+            // Clear input and show success
+            prizeTokenInput.value = '';
+            prizeError.classList.add('hidden');
+            
+            // Update game state and UI
+            this.gameState.prizeSummary = data.prizeSummary;
+            this.updatePrizeDisplay();
+            this.updateStartGameButton();
+            
+            this.addDebugMessage('outgoing', 'Admin', { action: 'setPrize', prizeSummary: data.prizeSummary });
+            
+        } catch (error) {
+            this.showPrizeError(error.message);
+        }
+    }
+    
+    async startGame() {
+        const startError = document.getElementById('start-error');
+        const startGameBtn = document.getElementById('start-game-btn');
+        
+        try {
+            startGameBtn.disabled = true;
+            startError.classList.add('hidden');
+            
+            const response = await fetch(`/demo/bettingGame/api/game/${this.gameId}/start`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ adminKey: this.adminKey })
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to start game');
+            }
+            
+            this.addDebugMessage('outgoing', 'Admin', { action: 'startGame', countdownSeconds: data.countdownSeconds });
+            
+        } catch (error) {
+            startGameBtn.disabled = false;
+            startError.textContent = error.message;
+            startError.classList.remove('hidden');
+        }
+    }
+    
+    showPrizeError(message) {
+        const prizeError = document.getElementById('prize-error');
+        prizeError.textContent = message;
+        prizeError.classList.remove('hidden');
+        
+        setTimeout(() => {
+            prizeError.classList.add('hidden');
+        }, 5000);
+    }
+    
+    updatePrizeDisplay() {
+        const prizeDisplay = document.getElementById('prize-display');
+        
+        if (this.gameState?.prizeSummary) {
+            prizeDisplay.textContent = `Prize set: ${this.gameState.prizeSummary.display}`;
+            prizeDisplay.classList.remove('hidden');
+        } else {
+            prizeDisplay.classList.add('hidden');
+        }
+    }
+    
+    updateStartGameButton() {
+        const startGameBtn = document.getElementById('start-game-btn');
+        if (startGameBtn) {
+            // Enable start button always (can start with or without prize)
+            startGameBtn.disabled = false;
+        }
+    }
+    
+    updatePreStartCountdown(secondsRemaining) {
+        // Hide normal countdown and show prestart countdown
+        const countdownDisplay = document.querySelector('.countdown-display');
+        const adminControls = document.getElementById('admin-controls');
+        
+        // Hide normal countdown and admin controls during prestart
+        if (countdownDisplay) countdownDisplay.style.display = 'none';
+        if (adminControls) adminControls.style.display = 'none';
+        
+        // Show or update prestart countdown
+        let prestartDiv = document.getElementById('prestart-countdown');
+        if (!prestartDiv) {
+            prestartDiv = document.createElement('div');
+            prestartDiv.id = 'prestart-countdown';
+            prestartDiv.className = 'prestart-countdown';
+            prestartDiv.innerHTML = `
+                <h3>Game Starting!</h3>
+                <div id="prestart-timer" class="prestart-timer">${secondsRemaining}</div>
+            `;
+            
+            const container = document.querySelector('#lobby-screen .container');
+            container.insertBefore(prestartDiv, container.children[1]);
+        } else {
+            const timer = document.getElementById('prestart-timer');
+            if (timer) timer.textContent = secondsRemaining;
+        }
+    }
+    
+    showPreStartCountdown() {
+        // Show prestart countdown UI without timer (will be updated via WebSocket)
+        this.updatePreStartCountdown('--');
+    }
+    
+    generateQRCode(url) {
+        const qrContainer = document.getElementById('qr-code');
+        if (qrContainer && window.QRCode) {
+            try {
+                // Clear any existing QR code
+                qrContainer.innerHTML = '';
+                
+                // Generate new QR code
+                new QRCode(qrContainer, {
+                    text: url,
+                    width: 200,
+                    height: 200,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+            } catch (error) {
+                console.error('QR Code generation failed:', error);
+                // Hide QR code section if generation fails
+                const qrSection = document.querySelector('.qr-code-section');
+                if (qrSection) qrSection.style.display = 'none';
+            }
+        } else {
+            console.warn('QR Code library not loaded');
+            const qrSection = document.querySelector('.qr-code-section');
+            if (qrSection) qrSection.style.display = 'none';
+        }
     }
     
     updateUI() {
