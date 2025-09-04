@@ -86,5 +86,27 @@
     },
     "appName": "newAPP2",
     "created": "2025-09-04T13:43:20.471Z"
+  },
+  "a6361ba2b1a8a3a6fa723bc8decf83c2522d79a022b42e97e71a4079d21a93d9": {
+    "namespace": "minerack_101651d4f55cf35f:",
+    "allowedMethods": [
+      "get_info",
+      "get",
+      "set",
+      "del",
+      "exists",
+      "mget",
+      "expire",
+      "ttl"
+    ],
+    "limits": {
+      "mps": 60,
+      "bps": 1048576,
+      "maxkey": 256,
+      "maxval": 65536,
+      "mget_max": 16
+    },
+    "appName": "minerack",
+    "created": "2025-09-04T13:57:52.940Z"
   }
 }

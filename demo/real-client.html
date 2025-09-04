@@ -1,0 +1,1577 @@
+<!--
+===============================================================================
+🔗 NOSTRKV CONNECT - COMPLETE CLIENT IMPLEMENTATION EXAMPLE
+===============================================================================
+
+This is a complete, self-contained example of how to build a NostrKV Connect client.
+It demonstrates:
+
+✨ CORE CONCEPTS:
+• NostrKV Connect protocol (based on NIP-47)
+• Encrypted communication over Nostr relays
+• Connection string parsing and validation
+• Key-value operations (get, set, delete, exists)
+• Request/response handling with timeouts and retries
+
+🏗️ ARCHITECTURE:
+• Pure client-side implementation (no backend needed)
+• Uses Nostr relays for communication
+• Direct encrypted messaging with NostrKV server
+• Real-time bidirectional communication
+
+🛡️ PRODUCTION FEATURES:
+• Request deduplication to prevent spam
+• Rate limiting and exponential backoff
+• Comprehensive error handling
+• Connection status monitoring
+• UI feedback and loading states
+
+📚 EDUCATIONAL VALUE:
+• Complete working implementation
+• Extensively commented code
+• Step-by-step user flow
+• Real-world error handling patterns
+
+===============================================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NostrKV Connect - Complete Client Example</title>
+    <!-- 
+    ========================================================================
+    📱 RESPONSIVE CSS STYLING
+    ========================================================================
+    Modern, clean UI with:
+    • Step-by-step visual progress
+    • Loading states and feedback
+    • Color-coded status messages
+    • Mobile-responsive design
+    ======================================================================== 
+    -->
+    <style>
+        /* Base styling with modern design system */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .step {
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .step.active {
+            border-color: #007AFF;
+            background: #f8f9ff;
+        }
+        .step.completed {
+            border-color: #28a745;
+            background: #f8fff9;
+        }
+        .step.loading {
+            border-color: #ffc107;
+            background: #fffbf0;
+        }
+        h1, h2 {
+            color: #333;
+            margin-top: 0;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #333;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #007AFF;
+        }
+        button {
+            background: #007AFF;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #0056CC;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        button.loading {
+            background: #ffc107;
+            cursor: wait;
+        }
+        button.loading::after {
+            content: ' ⏳';
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #cce7ff;
+            color: #004085;
+            border: 1px solid #99d3ff;
+        }
+        .status.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .info-box {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 12px;
+            word-break: break-all;
+            margin: 10px 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .step-number {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            background: #007AFF;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .step.completed .step-number {
+            background: #28a745;
+        }
+        .step.loading .step-number {
+            background: #ffc107;
+        }
+        .kv-item {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .kv-key {
+            font-weight: 600;
+            color: #495057;
+            margin-right: 15px;
+        }
+        .kv-value {
+            flex: 1;
+            color: #6c757d;
+            word-break: break-word;
+            background: white;
+            padding: 8px 12px;
+            border-radius: 3px;
+            border: 1px solid #dee2e6;
+            margin-right: 10px;
+        }
+        .logs {
+            background: #000;
+            color: #0f0;
+            font-family: 'Courier New', monospace;
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 11px;
+            line-height: 1.4;
+            max-height: 300px;
+            overflow-y: auto;
+            margin: 15px 0;
+        }
+        .highlight {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #ffc107;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- 
+    ========================================================================
+    🎯 MAIN USER INTERFACE
+    ========================================================================
+    4-step guided process:
+    1. Parse connection string
+    2. Get server info
+    3. Set key-value pairs
+    4. Get/check key-value pairs
+    ======================================================================== 
+    -->
+    <div class="container">
+        <h1>🔗 NostrKV Connect - Complete Client Example</h1>
+        <div class="highlight">
+            <strong>🚀 This is a fully functional NostrKV Connect client!</strong><br>
+            It demonstrates real encrypted communication over Nostr relays.<br>
+            <em>Perfect example for building your own NostrKV integrations.</em>
+        </div>
+        
+        <div id="status-messages"></div>
+        <div id="connection-status" class="status info" style="display: none;">
+            📶 Connection Status: <span id="connection-text">Disconnected</span>
+        </div>
+        <div id="request-counter" class="status info" style="display: none;">
+            📊 Active Requests: <span id="active-count">0</span> | Pending: <span id="pending-count">0</span>
+        </div>
+    </div>
+
+    <!-- Step 1: Connection String Input -->
+    <div class="step active" id="step1">
+        <h2><span class="step-number">1</span>Enter Connection String</h2>
+        <p>Paste your NostrKV Connect connection string:</p>
+        
+        <div class="form-group">
+            <label for="connection-string">Connection String:</label>
+            <textarea id="connection-string" rows="3" 
+                placeholder="nostr+kvconnect://npub1...?relay=wss://relay.damus.io&secret=nsec1...&ns=myapp:"></textarea>
+        </div>
+        
+        <button onclick="parseAndConnect()">Parse & Connect to Relays</button>
+        
+        <div id="connection-info" style="display: none;">
+            <h3>Parsed Connection Info:</h3>
+            <div class="info-box" id="parsed-info"></div>
+        </div>
+    </div>
+
+    <!-- Step 2: Get Server Info -->
+    <div class="step" id="step2">
+        <h2><span class="step-number">2</span>Get Server Information</h2>
+        <p>Send encrypted get_info request via Nostr:</p>
+        
+        <button onclick="getServerInfo()" id="get-info-btn" disabled>Send get_info Request</button>
+        
+        <div id="server-info" style="display: none;">
+            <h3>Server Response:</h3>
+            <div class="info-box" id="server-info-data"></div>
+        </div>
+    </div>
+
+    <!-- Step 3: Set Key-Value -->
+    <div class="step" id="step3">
+        <h2><span class="step-number">3</span>Set Key-Value</h2>
+        <p>Send encrypted set request via Nostr:</p>
+        
+        <div class="form-group">
+            <label for="set-key">Key:</label>
+            <input type="text" id="set-key" placeholder="user123" disabled>
+        </div>
+        
+        <div class="form-group">
+            <label for="set-value">Value:</label>
+            <textarea id="set-value" rows="2" placeholder="Hello, NostrKV!" disabled></textarea>
+        </div>
+        
+        <div class="form-group">
+            <label for="set-ttl">TTL (seconds, optional):</label>
+            <input type="number" id="set-ttl" placeholder="3600" disabled>
+        </div>
+        
+        <button onclick="setValue()" id="set-btn" disabled>Send set Request</button>
+    </div>
+
+    <!-- Step 4: Get Key-Value -->
+    <div class="step" id="step4">
+        <h2><span class="step-number">4</span>Get Key-Value</h2>
+        <p>Send encrypted get request via Nostr:</p>
+        
+        <div class="form-group">
+            <label for="get-key">Key to retrieve:</label>
+            <input type="text" id="get-key" placeholder="user123" disabled>
+        </div>
+        
+        <button onclick="getValue()" id="get-btn" disabled>Send get Request</button>
+        <button onclick="checkExists()" id="exists-btn" disabled>Send exists Request</button>
+        
+        <div id="retrieved-data" style="display: none;">
+            <h3>Retrieved Data:</h3>
+            <div id="data-display"></div>
+        </div>
+    </div>
+
+    <!-- Connection Logs -->
+    <div class="container">
+        <h3>🔍 Real-time Nostr Logs</h3>
+        <div class="logs" id="logs">
+            <div>[INFO] Client initialized. Ready to connect...</div>
+        </div>
+        <button onclick="clearLogs()">Clear Logs</button>
+        <button onclick="showConnectionStats()">Show Stats</button>
+        <button onclick="client.disconnect(); showStatus('info', 'Disconnected from relays')">Disconnect</button>
+    </div>
+
+    <!-- 
+    ========================================================================
+    📚 NOSTR-TOOLS LIBRARY
+    ========================================================================
+    We use the nostr-tools library for all Nostr protocol operations:
+    • Event creation and signing
+    • NIP-04 and NIP-44 encryption/decryption  
+    • Relay connection management
+    • Key management utilities
+    
+    This is the standard library for Nostr development in JavaScript.
+    ======================================================================== 
+    -->
+    <script src="https://unpkg.com/nostr-tools@2.10.4/lib/nostr.bundle.js"></script>
+    
+    <script>
+        /*
+        ====================================================================
+        🔗 NOSTRKV CONNECT CLIENT - COMPLETE IMPLEMENTATION
+        ====================================================================
+        
+        This class implements a complete NostrKV Connect client following
+        the protocol specification (based on NIP-47 for wallet connect).
+        
+        KEY CONCEPTS:
+        • Connection strings encode server pubkey, client keys, and config
+        • All communication happens via encrypted Nostr events
+        • Request events use kind 23194, responses use kind 23195
+        • Each request gets a unique ID for response matching
+        • Rate limiting prevents relay spam
+        
+        SECURITY:
+        • All messages are encrypted using NIP-04 or NIP-44
+        • Private keys never leave the client
+        • Server validates permissions per connection
+        
+        ====================================================================
+        */
+        class RealNostrKVClient {
+            constructor() {
+                // =============================================================
+                // 🏗️ CLIENT STATE MANAGEMENT
+                // =============================================================
+                
+                // Connection configuration (parsed from connection string)
+                this.config = null;
+                
+                // Nostr relay connection pool
+                this.pool = null;
+                
+                // Subscription for receiving responses
+                this.subscription = null;
+                
+                // Track pending requests awaiting responses
+                this.pendingRequests = new Map();
+                
+                // Connection state flag
+                this.connected = false;
+                
+                // =============================================================
+                // ⏱️ TIMING & RATE LIMITING CONFIGURATION
+                // =============================================================
+                
+                // How long to wait for responses before timing out
+                this.connectionTimeout = 30000; // 30 seconds
+                
+                // Rate limiting: when did we last send a request?
+                this.lastRequestTime = 0;
+                
+                // Minimum time between requests (prevents relay spam)
+                this.minRequestInterval = 2000; // 2 seconds between requests
+                
+                // =============================================================
+                // 🚫 DUPLICATE REQUEST PREVENTION
+                // =============================================================
+                
+                // Track active requests by signature to prevent duplicates
+                // Key format: "method_jsonParams" (e.g., "get_{\"key\":\"user123\"}")
+                this.activeRequests = new Set();
+                
+                // Request queue for managing sequential operations
+                this.requestQueue = [];
+                
+                // Prevent multiple queue processors
+                this.processingQueue = false;
+                
+                // =============================================================
+                // 🔄 RETRY LOGIC CONFIGURATION
+                // =============================================================
+                
+                // Maximum retry attempts for failed requests
+                this.maxRetries = 2;
+                
+                // Base delay between retries (exponential backoff)
+                this.retryDelay = 3000; // 3 seconds base delay
+            }
+
+            /*
+            =================================================================
+            📝 LOGGING SYSTEM
+            =================================================================
+            
+            Provides comprehensive logging for debugging and educational 
+            purposes. Logs both to console and visual UI.
+            
+            Types: INFO, SUCCESS, WARN, ERROR
+            =================================================================
+            */
+            log(message, type = 'INFO') {
+                const timestamp = new Date().toLocaleTimeString();
+                const logEntry = `[${timestamp}] [${type}] ${message}`;
+                
+                // Always log to browser console for debugging
+                console.log(logEntry);
+                
+                // Also display in the visual log area
+                const logsDiv = document.getElementById('logs');
+                if (logsDiv) {
+                    const logDiv = document.createElement('div');
+                    logDiv.textContent = logEntry;
+                    
+                    // Color code by message type
+                    if (type === 'ERROR') logDiv.style.color = '#ff6b6b';
+                    if (type === 'SUCCESS') logDiv.style.color = '#51cf66';
+                    if (type === 'WARN') logDiv.style.color = '#ffd43b';
+                    
+                    logsDiv.appendChild(logDiv);
+                    logsDiv.scrollTop = logsDiv.scrollHeight; // Auto-scroll to bottom
+                }
+            }
+
+            /*
+            =================================================================
+            🔗 CONNECTION STRING PARSING
+            =================================================================
+            
+            NostrKV Connect uses URIs similar to Bitcoin's BIP-21 format:
+            
+            Format: nostr+kvconnect://SERVER_IDENTIFIER?params
+            
+            Example:
+            nostr+kvconnect://npub1abc...?relay=wss://relay.damus.io&secret=nsec1xyz...&cmds=get,set
+            
+            Parameters:
+            • SERVER_IDENTIFIER: npub or hex pubkey of NostrKV server
+            • relay: Nostr relay URLs (can be multiple)
+            • secret: Client private key (nsec or hex)
+            • cmds: Allowed methods (comma-separated)
+            • mps/bps: Rate limits
+            • name: Human-readable connection name
+            
+            Note: Namespaces are automatically generated by the server for security.
+            
+            =================================================================
+            */
+            parseConnectionString(uri) {
+                try {
+                    // Parse the URI using standard URL parser
+                    const url = new URL(uri);
+                    const serverIdentifier = url.hostname; // The part after //
+                    const params = url.searchParams; // Everything after ?
+                    
+                    // =======================================================
+                    // 🔑 SERVER PUBKEY EXTRACTION
+                    // =======================================================
+                    // Server can be specified as npub (user-friendly) or hex
+                    let serverPubkey;
+                    if (serverIdentifier.startsWith('npub')) {
+                        // Decode npub to hex using nostr-tools
+                        serverPubkey = NostrTools.nip19.decode(serverIdentifier).data;
+                        this.log(`Server pubkey decoded from npub: ${serverPubkey.substring(0,16)}...`);
+                    } else {
+                        // Assume it's already in hex format
+                        serverPubkey = serverIdentifier;
+                        this.log(`Server pubkey (hex): ${serverPubkey.substring(0,16)}...`);
+                    }
+                    
+                    // =======================================================
+                    // 🔐 CLIENT PRIVATE KEY EXTRACTION
+                    // =======================================================
+                    // Client private key can be nsec (user-friendly) or hex
+                    const secretParam = params.get('secret');
+                    let clientSeckey;
+                    if (secretParam.startsWith('nsec')) {
+                        // Decode nsec to hex using nostr-tools
+                        clientSeckey = NostrTools.nip19.decode(secretParam).data;
+                        this.log(`Client private key decoded from nsec`);
+                    } else {
+                        // Assume it's already in hex format
+                        clientSeckey = secretParam;
+                        this.log(`Client private key (hex): ${clientSeckey.substring(0, 8)}...`);
+                    }
+                    
+                    // Generate public key from private key
+                    const clientPubkey = NostrTools.getPublicKey(clientSeckey);
+                    
+                    // =======================================================
+                    // ⚙️ BUILD CONFIGURATION OBJECT
+                    // =======================================================
+                    // Extract all connection parameters and store them
+                    this.config = {
+                        // Cryptographic keys
+                        serverPubkey: serverPubkey,     // Who we're talking to
+                        clientSeckey: clientSeckey,     // Our private key (for signing)
+                        clientPubkey: clientPubkey,     // Our public key (for identification)
+                        
+                        // Network configuration
+                        relays: params.getAll('relay'), // Nostr relays to use
+                        
+                        // Access control (namespace is auto-generated by server)
+                        allowedMethods: (params.get('cmds') || '').split(','), // Permitted operations
+                        
+                        // Rate limiting
+                        limits: {
+                            mps: parseInt(params.get('mps') || '60'),      // Messages per minute
+                            bps: parseInt(params.get('bps') || '1048576'), // Bytes per minute  
+                            maxkey: parseInt(params.get('maxkey') || '256'),   // Max key length
+                            maxval: parseInt(params.get('maxval') || '65536')  // Max value size
+                        },
+                        
+                        // Metadata
+                        name: params.get('name') || 'NostrKV Connection'
+                    };
+
+                    this.log(`Server pubkey: ${this.config.serverPubkey.substring(0, 16)}...`);
+                    this.log(`Client pubkey: ${this.config.clientPubkey.substring(0, 16)}...`);
+                    return this.config;
+                } catch (error) {
+                    this.log(`Failed to parse connection string: ${error.message}`, 'ERROR');
+                    throw new Error('Invalid connection string format');
+                }
+            }
+
+            /*
+            =================================================================
+            🌐 NOSTR RELAY CONNECTION
+            =================================================================
+            
+            Connects to Nostr relays and sets up subscriptions to receive
+            responses from the NostrKV server.
+            
+            Process:
+            1. Create relay connection pool
+            2. Set up subscription for response events (kind 23195)
+            3. Filter responses to our client pubkey only
+            4. Handle incoming response events
+            
+            =================================================================
+            */
+            async connectToRelays() {
+                if (!this.config) {
+                    throw new Error('No configuration. Parse connection string first.');
+                }
+
+                this.updateConnectionStatus('Connecting...');
+                this.log(`Connecting to ${this.config.relays.length} relays: ${this.config.relays.join(', ')}`);
+                
+                // Create a connection pool to manage multiple relays
+                this.pool = new NostrTools.SimplePool();
+                
+                // =======================================================
+                // 📡 SET UP SUBSCRIPTION FOR RESPONSES
+                // =======================================================
+                // We need to listen for response events from the server
+                const filters = [{
+                    kinds: [23195],                           // NostrKV response event kind
+                    '#p': [this.config.clientPubkey],         // Only events tagged to us
+                    since: Math.floor(Date.now() / 1000)      // Only new events (not history)
+                }];
+
+                this.log(`Setting up subscription for responses to ${this.config.clientPubkey.substring(0, 8)}...`);
+
+                // Subscribe to multiple relays simultaneously
+                this.subscription = this.pool.subscribeMany(
+                    this.config.relays,  // Connect to all configured relays
+                    filters,             // Using the filter we defined above
+                    {
+                        // ==============================================
+                        // 📨 EVENT HANDLERS
+                        // ==============================================
+                        
+                        // Called when we receive a response event
+                        onevent: (event) => {
+                            this.log(`📨 Received response event: ${event.id.substring(0,8)}...`);
+                            this.handleResponse(event);
+                        },
+                        
+                        // Called when subscription is established
+                        oneose: () => {
+                            this.log('✅ Subscription established successfully', 'SUCCESS');
+                            this.connected = true;
+                            this.updateConnectionStatus('Connected');
+                        },
+                        
+                        // Called when subscription is closed
+                        onclose: () => {
+                            this.log('⚠️ Subscription closed', 'WARN');
+                            this.connected = false;
+                            this.updateConnectionStatus('Disconnected');
+                        }
+                    }
+                );
+
+                // Wait a bit for connection
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                this.log('Ready to send requests', 'SUCCESS');
+            }
+
+            /*
+            =================================================================
+            📤 SEND REQUEST TO NOSTRKV SERVER
+            =================================================================
+            
+            This is the core method that handles all communication with
+            the NostrKV server. It:
+            
+            1. Validates connection status
+            2. Prevents duplicate requests  
+            3. Implements rate limiting
+            4. Encrypts the request
+            5. Creates and signs a Nostr event
+            6. Publishes to relays
+            7. Waits for response with timeout
+            8. Handles retries with exponential backoff
+            
+            Request/Response Flow:
+            Client Request (kind 23194) → Relays → Server
+            Server Response (kind 23195) ← Relays ← Server
+            
+            =================================================================
+            */
+            async sendRequest(method, params = {}, retryCount = 0) {
+                // =======================================================
+                // 🔍 PRE-FLIGHT VALIDATION
+                // =======================================================
+                if (!this.connected) {
+                    throw new Error('Not connected to relays');
+                }
+
+                // Create unique signature for this request to prevent duplicates
+                // Format: "methodName_jsonParams"
+                const requestSignature = `${method}_${JSON.stringify(params)}`;
+                
+                // Check if we're already processing this exact request
+                if (this.activeRequests.has(requestSignature)) {
+                    this.log(`🚫 Duplicate request blocked: ${method} (already in progress)`, 'WARN');
+                    throw new Error('Duplicate request - same request already in progress');
+                }
+                
+                // =======================================================
+                // 📊 REQUEST TRACKING & RATE LIMITING  
+                // =======================================================
+                
+                // Add to active requests set (prevents duplicates)
+                this.activeRequests.add(requestSignature);
+                this.updateRequestCounter(); // Update UI counter
+                
+                try {
+                    // =======================================================
+                    // ⏱️ RATE LIMITING ENFORCEMENT
+                    // =======================================================
+                    // Prevent requests from being sent too quickly
+                    // This protects against relay spam detection
+                    const now = Date.now();
+                    const timeSinceLastRequest = now - this.lastRequestTime;
+                    if (timeSinceLastRequest < this.minRequestInterval) {
+                        const waitTime = this.minRequestInterval - timeSinceLastRequest;
+                        this.log(`⏸️ Rate limiting: waiting ${waitTime}ms before sending request`, 'WARN');
+                        await new Promise(resolve => setTimeout(resolve, waitTime));
+                    }
+                    
+                    // Update last request timestamp
+                    this.lastRequestTime = Date.now();
+                    
+                    // =======================================================
+                    // 🆔 REQUEST ID GENERATION
+                    // =======================================================
+                    // Generate unique ID for request/response matching
+                    const requestId = 'req_' + Math.random().toString(36).substring(2, 15);
+                    
+                    // =======================================================
+                    // 📋 REQUEST OBJECT STRUCTURE
+                    // =======================================================
+                    // This follows the NostrKV Connect protocol format
+                    const request = {
+                        method,    // Operation: get, set, del, exists, etc.
+                        params,    // Parameters specific to the method
+                        id: requestId  // Unique identifier for matching response
+                    };
+
+                    this.log(`🚀 Preparing ${method} request: ${requestId} (attempt ${retryCount + 1}/${this.maxRetries + 1})`);
+
+                try {
+                    // =======================================================
+                    // 🔐 REQUEST ENCRYPTION
+                    // =======================================================
+                    // Convert request to JSON and encrypt it
+                    const requestJson = JSON.stringify(request);
+                    this.log(`📝 Request payload: ${requestJson}`);
+                    
+                    // Encrypt using NIP-04 (most compatible with servers)
+                    // This ensures only the server can read the request
+                    const encryptedContent = await NostrTools.nip04.encrypt(
+                        this.config.clientSeckey,    // Our private key
+                        this.config.serverPubkey,    // Server's public key
+                        requestJson                  // The request data
+                    );
+
+                    this.log(`🔐 Request encrypted successfully (${encryptedContent.length} chars)`);
+
+                    // =======================================================
+                    // 📨 NOSTR EVENT CREATION
+                    // =======================================================
+                    // Create a Nostr event following the protocol
+                    const event = {
+                        kind: 23194,                                    // NostrKV request event kind
+                        created_at: Math.floor(Date.now() / 1000),     // Unix timestamp
+                        tags: [['p', this.config.serverPubkey]],       // Tag the server (required)
+                        content: encryptedContent,                     // Our encrypted request
+                        pubkey: this.config.clientPubkey              // Our public key
+                    };
+
+                    // Sign the event with our private key (required by Nostr protocol)
+                    const signedEvent = NostrTools.finalizeEvent(event, this.config.clientSeckey);
+                    this.log(`✍️ Event signed successfully: ${signedEvent.id.substring(0,8)}...`);
+
+                    // =======================================================
+                    // 📡 PUBLISH TO RELAYS
+                    // =======================================================
+                    // Send the signed event to all configured relays
+                    const publishPromises = this.pool.publish(this.config.relays, signedEvent);
+                    this.log(`📡 Publishing to ${this.config.relays.length} relays...`);
+
+                    // =======================================================
+                    // ⏳ WAIT FOR RESPONSE WITH TIMEOUT & RETRY LOGIC
+                    // =======================================================
+                    // This promise will resolve when we get a response
+                    return new Promise((resolve, reject) => {
+                        // Store request details for response matching and retries
+                        this.pendingRequests.set(requestId, { 
+                            resolve, reject, timestamp: Date.now(), 
+                            method, params, retryCount 
+                        });
+                        
+                        // ==============================================
+                        // ⏰ TIMEOUT & RETRY HANDLER
+                        // ==============================================
+                        // Set up timeout with exponential backoff retry logic
+                        const timeoutId = setTimeout(async () => {
+                            if (this.pendingRequests.has(requestId)) {
+                                this.pendingRequests.delete(requestId);
+                                this.log(`⏰ Request ${requestId} timed out (${this.pendingRequests.size} pending)`, 'ERROR');
+                                
+                                // Clean up active request tracking
+                                this.activeRequests.delete(requestSignature);
+                                
+                                // ===========================================
+                                // 🔄 EXPONENTIAL BACKOFF RETRY LOGIC
+                                // ===========================================
+                                if (retryCount < this.maxRetries) {
+                                    // Calculate delay: 3s, 6s, 12s, 24s...
+                                    const retryDelay = this.retryDelay * Math.pow(2, retryCount);
+                                    this.log(`🔄 Retrying request after ${retryDelay}ms (attempt ${retryCount + 2}/${this.maxRetries + 1})`, 'WARN');
+                                    
+                                    // Schedule retry after delay
+                                    setTimeout(async () => {
+                                        try {
+                                            const retryResult = await this.sendRequest(method, params, retryCount + 1);
+                                            resolve(retryResult);
+                                        } catch (retryError) {
+                                            reject(retryError);
+                                        }
+                                    }, retryDelay);
+                                } else {
+                                    // Max retries exceeded
+                                    reject(new Error(`❌ Request timeout after ${this.maxRetries + 1} attempts`));
+                                }
+                            }
+                        }, this.connectionTimeout);
+                        
+                        // Store timeout ID so we can clear it when we get a response
+                        this.pendingRequests.set(requestId, { 
+                            resolve, reject, timestamp: Date.now(), timeoutId, 
+                            method, params, retryCount, requestSignature 
+                        });
+                    });
+
+                } catch (error) {
+                    this.log(`Error sending request: ${error.message}`, 'ERROR');
+                    this.activeRequests.delete(requestSignature);
+                    throw error;
+                }
+                
+                } catch (error) {
+                    // Remove from active requests on any error
+                    this.activeRequests.delete(requestSignature);
+                    this.updateRequestCounter();
+                    throw error;
+                }
+            }
+            
+            /*
+            =================================================================
+            📊 UI STATUS MANAGEMENT
+            =================================================================
+            
+            These methods provide real-time feedback to the user about:
+            • Connection status (Connected/Disconnected/Connecting)
+            • Active request counters
+            • Connection statistics
+            
+            This helps with debugging and provides transparency about
+            what the client is doing behind the scenes.
+            
+            =================================================================
+            */
+            updateConnectionStatus(status) {
+                const statusDiv = document.getElementById('connection-status');
+                const textSpan = document.getElementById('connection-text');
+                
+                if (statusDiv && textSpan) {
+                    textSpan.textContent = status;
+                    statusDiv.style.display = 'block';
+                    
+                    // Color coding for visual feedback
+                    statusDiv.className = 'status ' + (status === 'Connected' ? 'success' : 
+                                                    status === 'Connecting...' ? 'warning' : 'error');
+                }
+            }
+            
+            updateRequestCounter() {
+                const counterDiv = document.getElementById('request-counter');
+                const activeSpan = document.getElementById('active-count');
+                const pendingSpan = document.getElementById('pending-count');
+                
+                if (counterDiv && activeSpan && pendingSpan) {
+                    // Update counter displays
+                    activeSpan.textContent = this.activeRequests.size;
+                    pendingSpan.textContent = this.pendingRequests.size;
+                    
+                    // Show/hide counter based on activity
+                    if (this.activeRequests.size > 0 || this.pendingRequests.size > 0) {
+                        counterDiv.style.display = 'block';
+                        // Color coding: warning when active, info when just pending
+                        counterDiv.className = 'status ' + (this.activeRequests.size > 0 ? 'warning' : 'info');
+                    } else {
+                        counterDiv.style.display = 'none';
+                    }
+                }
+            }
+
+            getConnectionStats() {
+                // Return comprehensive connection statistics for debugging
+                return {
+                    connected: this.connected,
+                    activeRequests: this.activeRequests.size,
+                    pendingRequests: this.pendingRequests.size,
+                    lastRequestTime: this.lastRequestTime,
+                    relays: this.config?.relays?.length || 0,
+                    // Namespace is auto-generated by server (not tracked client-side)
+                    serverPubkey: this.config?.serverPubkey?.substring(0,8) + '...' || 'none'
+                };
+            }
+
+            /*
+            =================================================================
+            📨 HANDLE RESPONSE FROM NOSTRKV SERVER
+            =================================================================
+            
+            This method processes response events from the NostrKV server:
+            
+            1. Prevents duplicate processing
+            2. Attempts decryption (NIP-44 first, then NIP-04 fallback)
+            3. Parses JSON response
+            4. Matches response to pending request
+            5. Resolves the corresponding promise
+            
+            Response events use kind 23195 and are encrypted.
+            
+            =================================================================
+            */
+            async handleResponse(event) {
+                try {
+                    // =======================================================
+                    // 🚫 DUPLICATE EVENT PREVENTION
+                    // =======================================================
+                    // Ensure we don't process the same event twice
+                    if (this.processedEvents && this.processedEvents.has(event.id)) {
+                        return; // Skip duplicate events
+                    }
+                    
+                    // Initialize processed events set if needed
+                    if (!this.processedEvents) {
+                        this.processedEvents = new Set();
+                    }
+                    this.processedEvents.add(event.id);
+                    
+                    this.log(`📨 Processing response event: ${event.id.substring(0,8)}...`);
+                    this.log(`📤 Response from: ${event.pubkey.substring(0, 8)}...`);
+                    this.log(`📊 Content length: ${event.content.length} chars`);
+                    
+                    let decryptedContent;
+                    
+                    // =======================================================
+                    // 🔍 DETECT ENCRYPTION FORMAT
+                    // =======================================================
+                    // Different servers may use different encryption methods
+                    const isNip04Format = event.content.includes('?iv=');
+                    this.log(`🔍 Content appears to be ${isNip04Format ? 'NIP-04' : 'NIP-44'} format`);
+                    
+                    if (isNip04Format) {
+                        // ==============================================
+                        // 🔓 NIP-04 DECRYPTION
+                        // ==============================================
+                        try {
+                            this.log(`🔓 Attempting NIP-04 decryption`);
+                            decryptedContent = await NostrTools.nip04.decrypt(
+                                this.config.clientSeckey,    // Our private key
+                                event.pubkey,                 // Server's public key
+                                event.content                 // Encrypted content
+                            );
+                            this.log(`✅ Response decrypted with NIP-04`);
+                        } catch (nip04Error) {
+                            this.log(`❌ NIP-04 decryption failed: ${nip04Error.message}`, 'ERROR');
+                            throw new Error(`NIP-04 decrypt failed: ${nip04Error.message}`);
+                        }
+                    } else {
+                        // ==============================================
+                        // 🔓 NIP-44 DECRYPTION WITH NIP-04 FALLBACK
+                        // ==============================================
+                        try {
+                            this.log(`🔓 Attempting NIP-44 decryption`);
+                            
+                            // Verify NIP-44 is available in this nostr-tools version
+                            if (!NostrTools.nip44) {
+                                throw new Error('NIP-44 not available in this version of nostr-tools');
+                            }
+                            
+                            // NIP-44 uses a shared conversation key
+                            const conversationKey = NostrTools.nip44.v2.utils.getConversationKey(
+                                this.config.clientSeckey,    // Our private key
+                                event.pubkey                  // Server's public key
+                            );
+                            
+                            decryptedContent = NostrTools.nip44.v2.decrypt(
+                                event.content,
+                                conversationKey
+                            );
+                            this.log(`✅ Response decrypted with NIP-44`);
+                        } catch (nip44Error) {
+                            this.log(`⚠️ NIP-44 decryption failed, trying NIP-04 fallback: ${nip44Error.message}`, 'WARN');
+                            
+                            // ===========================================
+                            // 🔄 FALLBACK TO NIP-04
+                            // ===========================================
+                            try {
+                                this.log(`🔄 Falling back to NIP-04 decryption`);
+                                decryptedContent = await NostrTools.nip04.decrypt(
+                                    this.config.clientSeckey,
+                                    event.pubkey,
+                                    event.content
+                                );
+                                this.log(`✅ Response decrypted with NIP-04 (fallback)`);
+                            } catch (nip04Error) {
+                                this.log(`❌ Both NIP-44 and NIP-04 decryption failed`, 'ERROR');
+                                throw new Error(`Decryption failed: ${nip44Error.message} / ${nip04Error.message}`);
+                            }
+                        }
+                    }
+
+                    this.log(`📄 Response decrypted: ${decryptedContent.substring(0, 100)}...`);
+
+                    // =======================================================
+                    // 📋 PARSE RESPONSE JSON
+                    // =======================================================
+                    const response = JSON.parse(decryptedContent);
+                    const requestId = response.id;
+
+                    // =======================================================
+                    // 🔍 MATCH RESPONSE TO PENDING REQUEST
+                    // =======================================================
+                    if (this.pendingRequests.has(requestId)) {
+                        const pendingRequest = this.pendingRequests.get(requestId);
+                        const { resolve, timeoutId, requestSignature } = pendingRequest;
+                        
+                        // Clear the timeout timer since we got a response
+                        if (timeoutId) {
+                            clearTimeout(timeoutId);
+                        }
+                        
+                        // Clean up tracking
+                        this.pendingRequests.delete(requestId);
+                        
+                        // Remove from active requests tracking
+                        if (requestSignature) {
+                            this.activeRequests.delete(requestSignature);
+                            this.updateRequestCounter(); // Update UI counter
+                        }
+                        
+                        // ==============================================
+                        // 📊 LOG RESPONSE STATUS
+                        // ==============================================
+                        if (response.error) {
+                            this.log(`❌ Response error: ${response.error.code} - ${response.error.message}`, 'ERROR');
+                        } else {
+                            this.log(`✅ Response success for ${requestId} (${this.pendingRequests.size} pending)`, 'SUCCESS');
+                        }
+                        
+                        // Resolve the promise with the response
+                        resolve(response);
+                    } else {
+                        this.log(`⚠️ Received response for unknown request ID: ${requestId}`, 'WARN');
+                    }
+                } catch (error) {
+                    this.log(`Failed to decrypt response: ${error.message}`, 'ERROR');
+                }
+            }
+
+            disconnect() {
+                if (this.subscription) {
+                    this.subscription.close();
+                    this.log('Subscription closed');
+                }
+                if (this.pool) {
+                    this.pool.close(this.config.relays);
+                    this.log('Pool closed');
+                }
+                this.connected = false;
+                this.updateConnectionStatus('Disconnected');
+                this.updateRequestCounter();
+            }
+        }
+
+        /*
+        ====================================================================
+        🔧 LIBRARY VERIFICATION & CLIENT INITIALIZATION
+        ====================================================================
+        
+        Verify that all required dependencies are loaded correctly
+        and initialize the global client instance.
+        
+        ====================================================================
+        */
+        
+        // Verify nostr-tools library loaded correctly
+        console.log('📚 NostrTools loaded:', typeof NostrTools !== 'undefined');
+        console.log('🔐 NIP-04 available:', !!NostrTools?.nip04);
+        console.log('🔓 NIP-04.decrypt available:', typeof NostrTools?.nip04?.decrypt === 'function');
+        
+        // Create global client instance
+        const client = new RealNostrKVClient();
+        client.log('🚀 NostrKV Connect Client initialized successfully');
+        client.log('📚 NostrTools NIP-04 decrypt available: ' + (typeof NostrTools?.nip04?.decrypt === 'function'));
+
+        /*
+        ====================================================================
+        🎨 UI UTILITY FUNCTIONS
+        ====================================================================
+        
+        Helper functions for managing the user interface:
+        • Status messages with timestamps
+        • Button state management with loading indicators
+        • Step progression tracking
+        • Connection statistics display
+        
+        ====================================================================
+        */
+        
+        // Display status messages to the user
+        function showStatus(type, message) {
+            const container = document.getElementById('status-messages');
+            const statusDiv = document.createElement('div');
+            statusDiv.className = `status ${type}`;
+            
+            // Add timestamp for better debugging
+            const timestamp = new Date().toLocaleTimeString();
+            statusDiv.innerHTML = `<strong>[${timestamp}]</strong> ${message}`;
+            
+            // Clear previous messages and show new one
+            container.innerHTML = '';
+            container.appendChild(statusDiv);
+            
+            // Auto-dismiss (errors stay longer)
+            const dismissTime = type === 'error' ? 12000 : 8000;
+            setTimeout(() => {
+                if (statusDiv.parentNode) {
+                    statusDiv.parentNode.removeChild(statusDiv);
+                }
+            }, dismissTime);
+        }
+        
+        // Display detailed connection statistics
+        function showConnectionStats() {
+            if (client && typeof client.getConnectionStats === 'function') {
+                const stats = client.getConnectionStats();
+                const message = `📊 Connection Stats: Connected=${stats.connected}, Active=${stats.activeRequests}, Pending=${stats.pendingRequests}, Relays=${stats.relays}`;
+                showStatus('info', message);
+            }
+        }
+
+        function setStepLoading(stepNumber) {
+            const step = document.getElementById(`step${stepNumber}`);
+            step.classList.remove('active');
+            step.classList.add('loading');
+        }
+        
+        function setButtonLoading(buttonId, loading = true) {
+            const button = document.getElementById(buttonId);
+            if (button) {
+                if (loading) {
+                    button.disabled = true;
+                    button.classList.add('loading');
+                    button.dataset.originalText = button.textContent;
+                    if (button.textContent.includes('Send')) {
+                        button.textContent = button.textContent.replace('Send', 'Sending');
+                    } else if (button.textContent.includes('Parse')) {
+                        button.textContent = 'Connecting...';
+                    }
+                } else {
+                    button.disabled = false;
+                    button.classList.remove('loading');
+                    if (button.dataset.originalText) {
+                        button.textContent = button.dataset.originalText;
+                        delete button.dataset.originalText;
+                    }
+                }
+            }
+        }
+        
+        function setAllButtonsInStep(stepNumber, disabled = true) {
+            const step = document.getElementById(`step${stepNumber}`);
+            if (step) {
+                const buttons = step.querySelectorAll('button');
+                buttons.forEach(button => {
+                    button.disabled = disabled;
+                    if (disabled) {
+                        button.classList.add('loading');
+                    } else {
+                        button.classList.remove('loading');
+                    }
+                });
+            }
+        }
+
+        function setStepCompleted(stepNumber) {
+            const step = document.getElementById(`step${stepNumber}`);
+            step.classList.remove('loading', 'active');
+            step.classList.add('completed');
+            
+            if (stepNumber < 4) {
+                const nextStep = document.getElementById(`step${stepNumber + 1}`);
+                nextStep.classList.add('active');
+            }
+        }
+
+        function enableStepButtons(stepNumber) {
+            const buttons = {
+                2: ['get-info-btn'],
+                3: ['set-key', 'set-value', 'set-ttl', 'set-btn'],
+                4: ['get-key', 'get-btn', 'exists-btn']
+            };
+
+            if (buttons[stepNumber]) {
+                buttons[stepNumber].forEach(id => {
+                    const element = document.getElementById(id);
+                    if (element) {
+                        element.disabled = false;
+                    }
+                });
+            }
+        }
+
+        /*
+        ====================================================================
+        🚀 STEP-BY-STEP USER WORKFLOW FUNCTIONS
+        ====================================================================
+        
+        These functions guide the user through the NostrKV Connect process:
+        
+        Step 1: Parse connection string and connect to relays
+        Step 2: Get server information and capabilities  
+        Step 3: Set key-value pairs
+        Step 4: Get and check key-value pairs
+        
+        Each step includes comprehensive error handling and user feedback.
+        
+        ====================================================================
+        */
+        
+        // STEP 1: Parse connection string and establish relay connections
+        async function parseAndConnect() {
+            const connectionString = document.getElementById('connection-string').value.trim();
+            
+            // Validate input
+            if (!connectionString) {
+                showStatus('error', '❌ Please enter a connection string');
+                return;
+            }
+
+            // Prevent duplicate connection attempts
+            const button = document.querySelector('button[onclick="parseAndConnect()"]');
+            if (button && button.disabled) {
+                showStatus('warning', '⚠️ Connection already in progress...');
+                return;
+            }
+
+            setStepLoading(1);
+            setButtonLoading(button.id || 'connect-btn');
+            
+            try {
+                const config = client.parseConnectionString(connectionString);
+                
+                // Display parsed info
+                const infoDiv = document.getElementById('parsed-info');
+                infoDiv.innerHTML = `
+                    <strong>Server:</strong> ${config.serverPubkey.substring(0, 16)}...<br>
+                    <strong>Client:</strong> ${config.clientPubkey.substring(0, 16)}...<br>
+                    <strong>Methods:</strong> ${config.allowedMethods.join(', ')}<br>
+                    <strong>Relays:</strong> ${config.relays.join(', ')}<br>
+                    <strong>Rate Limits:</strong> ${config.limits.mps} req/min, ${config.limits.bps} bytes/min<br>
+                    <em>Note: Namespace is automatically assigned by server for security</em>
+                `;
+                
+                document.getElementById('connection-info').style.display = 'block';
+                
+                // Connect to relays
+                await client.connectToRelays();
+                
+                showStatus('success', 'Connected to Nostr relays successfully!');
+                setStepCompleted(1);
+                enableStepButtons(2);
+                
+            } catch (error) {
+                showStatus('error', `Connection failed: ${error.message}`);
+                document.getElementById('step1').classList.remove('loading');
+                document.getElementById('step1').classList.add('active');
+            } finally {
+                setButtonLoading(button.id || 'connect-btn', false);
+            }
+        }
+
+        // STEP 2: Request server information and capabilities
+        async function getServerInfo() {
+            // Prevent multiple simultaneous requests
+            const button = document.getElementById('get-info-btn');
+            if (button && button.disabled) {
+                showStatus('warning', '⚠️ Request already in progress...');
+                return;
+            }
+            
+            setStepLoading(2);
+            setButtonLoading('get-info-btn');
+            
+            try {
+                showStatus('info', '📡 Sending get_info request via Nostr...');
+                
+                const response = await client.sendRequest('get_info', {});
+                
+                if (response.error) {
+                    showStatus('error', `Server info failed: ${response.error.message}`);
+                    document.getElementById('step2').classList.remove('loading');
+                    return;
+                }
+                
+                const infoDiv = document.getElementById('server-info-data');
+                const info = response.result;
+                infoDiv.innerHTML = `
+                    <strong>Response ID:</strong> ${response.id}<br>
+                    <strong>Available Methods:</strong> ${info.methods.join(', ')}<br>
+                    <strong>Your Namespace:</strong> ${info.ns} <em>(auto-assigned)</em><br>
+                    <strong>Encryption:</strong> NIP-44: ${info.encryption.nip44}, NIP-04: ${info.encryption.nip04}<br>
+                    <strong>Limits:</strong><br>
+                    &nbsp;&nbsp;• Max requests/minute: ${info.limits.mps}<br>
+                    &nbsp;&nbsp;• Max bytes/minute: ${info.limits.bps}<br>
+                    &nbsp;&nbsp;• Max key length: ${info.limits.maxkey}<br>
+                    &nbsp;&nbsp;• Max value size: ${info.limits.maxval}
+                `;
+                
+                document.getElementById('server-info').style.display = 'block';
+                showStatus('success', 'Server info retrieved via Nostr!');
+                
+                setStepCompleted(2);
+                enableStepButtons(3);
+                
+            } catch (error) {
+                showStatus('error', `Error getting server info: ${error.message}`);
+                document.getElementById('step2').classList.remove('loading');
+            } finally {
+                setButtonLoading('get-info-btn', false);
+            }
+        }
+
+        // STEP 3: Set a key-value pair in the NostrKV server
+        async function setValue() {
+            const key = document.getElementById('set-key').value.trim();
+            const value = document.getElementById('set-value').value;
+            const ttl = document.getElementById('set-ttl').value;
+            
+            // Validate required fields
+            if (!key || !value) {
+                showStatus('error', '❌ Please enter both key and value');
+                return;
+            }
+            
+            // Prevent multiple simultaneous set operations
+            const button = document.getElementById('set-btn');
+            if (button && button.disabled) {
+                showStatus('warning', '⚠️ Set request already in progress...');
+                return;
+            }
+
+            setStepLoading(3);
+            setButtonLoading('set-btn');
+            setAllButtonsInStep(3, true);
+            
+            try {
+                showStatus('info', '📡 Sending set request via Nostr...');
+                
+                // Prepare request parameters
+                const params = { 
+                    key,                    // The key to store
+                    value: btoa(value)      // Base64 encode value (protocol requirement)
+                };
+                if (ttl && parseInt(ttl) > 0) {
+                    params.ttl = parseInt(ttl);
+                }
+                
+                const response = await client.sendRequest('set', params);
+                
+                if (response.error) {
+                    showStatus('error', `Set failed: ${response.error.message}`);
+                    document.getElementById('step3').classList.remove('loading');
+                    return;
+                }
+                
+                showStatus('success', `Successfully set key "${key}" via Nostr!`);
+                
+                // Pre-fill get key field
+                document.getElementById('get-key').value = key;
+                
+                // Clear form
+                document.getElementById('set-key').value = '';
+                document.getElementById('set-value').value = '';
+                document.getElementById('set-ttl').value = '';
+                
+                setStepCompleted(3);
+                enableStepButtons(4);
+                
+            } catch (error) {
+                showStatus('error', `Error setting value: ${error.message}`);
+                document.getElementById('step3').classList.remove('loading');
+            } finally {
+                setButtonLoading('set-btn', false);
+                setAllButtonsInStep(3, false);
+            }
+        }
+
+        // STEP 4: Retrieve a value by key from the NostrKV server
+        async function getValue() {
+            const key = document.getElementById('get-key').value.trim();
+            
+            // Validate input
+            if (!key) {
+                showStatus('error', '❌ Please enter a key to retrieve');
+                return;
+            }
+            
+            // Prevent multiple simultaneous get operations
+            const button = document.getElementById('get-btn');
+            if (button && button.disabled) {
+                showStatus('warning', '⚠️ Get request already in progress...');
+                return;
+            }
+
+            setButtonLoading('get-btn');
+            setAllButtonsInStep(4, true);
+
+            try {
+                showStatus('info', '📡 Sending get request via Nostr...');
+                
+                const response = await client.sendRequest('get', { key });
+                
+                if (response.error) {
+                    showStatus('error', `Get failed: ${response.error.message}`);
+                    return;
+                }
+                
+                if (response.result.value === null) {
+                    showStatus('warning', `Key "${key}" not found`);
+                    document.getElementById('data-display').innerHTML = `<div class="status info">Key "${key}" not found</div>`;
+                } else {
+                    const decodedValue = atob(response.result.value);
+                    showStatus('success', `Retrieved key "${key}" via Nostr!`);
+                    
+                    document.getElementById('data-display').innerHTML = `
+                        <div class="kv-item">
+                            <div class="kv-key">${key}</div>
+                            <div class="kv-value">${decodedValue}</div>
+                        </div>
+                        <div class="info-box">
+                            <strong>Raw Response:</strong><br>
+                            Response ID: ${response.id}<br>
+                            Base64 Value: ${response.result.value}<br>
+                            Decoded Value: ${decodedValue}
+                        </div>
+                    `;
+                }
+                
+                document.getElementById('retrieved-data').style.display = 'block';
+                setStepCompleted(4);
+                
+            } catch (error) {
+                showStatus('error', `Error getting value: ${error.message}`);
+            } finally {
+                setButtonLoading('get-btn', false);
+                setAllButtonsInStep(4, false);
+            }
+        }
+
+        // STEP 4B: Check if a key exists without retrieving its value
+        async function checkExists() {
+            const key = document.getElementById('get-key').value.trim();
+            
+            // Validate input
+            if (!key) {
+                showStatus('error', '❌ Please enter a key to check');
+                return;
+            }
+            
+            // Prevent multiple simultaneous exists checks
+            const button = document.getElementById('exists-btn');
+            if (button && button.disabled) {
+                showStatus('warning', '⚠️ Exists check already in progress...');
+                return;
+            }
+
+            setButtonLoading('exists-btn');
+            setAllButtonsInStep(4, true);
+
+            try {
+                showStatus('info', '📡 Sending exists request via Nostr...');
+                
+                const response = await client.sendRequest('exists', { key });
+                
+                if (response.error) {
+                    showStatus('error', `Exists check failed: ${response.error.message}`);
+                    return;
+                }
+                
+                const exists = response.result.exists;
+                showStatus('success', `Key "${key}" ${exists ? 'EXISTS' : 'does NOT exist'}`);
+                
+                document.getElementById('data-display').innerHTML = `
+                    <div class="status ${exists ? 'success' : 'info'}">
+                        Key "${key}" ${exists ? 'exists' : 'does not exist'}
+                    </div>
+                    <div class="info-box">
+                        <strong>Response:</strong><br>
+                        Response ID: ${response.id}<br>
+                        Exists: ${exists}
+                    </div>
+                `;
+                
+                document.getElementById('retrieved-data').style.display = 'block';
+                
+            } catch (error) {
+                showStatus('error', `Error checking key: ${error.message}`);
+            } finally {
+                setButtonLoading('exists-btn', false);
+                setAllButtonsInStep(4, false);
+            }
+        }
+
+        function clearLogs() {
+            const logsDiv = document.getElementById('logs');
+            logsDiv.innerHTML = '<div>[INFO] Logs cleared</div>';
+        }
+
+        /*
+        ====================================================================
+        🎬 APPLICATION INITIALIZATION
+        ====================================================================
+        
+        When the page loads, attempt to auto-fill the connection string
+        from the local development server (if available).
+        
+        This makes testing easier during development.
+        
+        ====================================================================
+        */
+        document.addEventListener('DOMContentLoaded', function() {
+            // Try to load connection string from development server
+            fetch('/api/connection-uri')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('connection-string').value = data.uri;
+                    showStatus('info', '✨ Connection string loaded from local server. Click "Parse & Connect" to begin!');
+                })
+                .catch(() => {
+                    // Fallback message when not running with development server
+                    showStatus('info', '🔗 NostrKV Connect client ready. Enter your connection string above to begin.');
+                });
+        });
+
+        /*
+        ====================================================================
+        🧹 CLEANUP ON PAGE UNLOAD
+        ====================================================================
+        
+        Properly disconnect from relays when the user closes or 
+        refreshes the page to prevent resource leaks.
+        
+        ====================================================================
+        */
+        window.addEventListener('beforeunload', () => {
+            if (client && client.connected) {
+                client.log('🚪 Page unloading, disconnecting from relays...');
+                client.disconnect();
+            }
+        });
+    </script>
+</body>
+</html>
